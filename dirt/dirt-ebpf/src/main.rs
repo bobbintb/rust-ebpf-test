@@ -44,22 +44,25 @@ fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
     // Get the filename from the dentry
     if let Some(dentry_ptr) = dentry {
         let mut filename: [u8; 64] = [0; 64];
-        let filename_len = unsafe { 
-            aya_ebpf::helpers::bpf_probe_read_kernel_str(&mut filename, &(dentry_ptr + 32)) 
+        let filename_result = unsafe { 
+            aya_ebpf::helpers::bpf_probe_read_kernel_str_bytes(&mut filename, (dentry_ptr + 32) as *const u8) 
         };
         
-        if filename_len > 0 {
-            // Convert to string for logging
-            let name_str = core::str::from_utf8(&filename[..filename_len as usize]).unwrap_or("unknown");
-            info!(&ctx, "DIRT: vfs_unlink ENTRY - File: {}", name_str);
-            
-            unsafe {
-                bpf_printk!(b"DIRT: vfs_unlink ENTRY - File: %s", &filename);
+        match filename_result {
+            Ok(len) if len > 0 => {
+                // Convert to string for logging
+                let name_str = core::str::from_utf8(&filename[..len]).unwrap_or("unknown");
+                info!(&ctx, "DIRT: vfs_unlink ENTRY - File: {}", name_str);
+                
+                unsafe {
+                    bpf_printk!(b"DIRT: vfs_unlink ENTRY - File: %s", filename.as_ptr());
+                }
             }
-        } else {
-            info!(&ctx, "DIRT: vfs_unlink ENTRY - File: (could not read filename)");
-            unsafe {
-                bpf_printk!(b"DIRT: vfs_unlink ENTRY - File: (could not read filename)");
+            _ => {
+                info!(&ctx, "DIRT: vfs_unlink ENTRY - File: (could not read filename)");
+                unsafe {
+                    bpf_printk!(b"DIRT: vfs_unlink ENTRY - File: (could not read filename)");
+                }
             }
         }
     } else {
