@@ -4,8 +4,8 @@
 use aya_ebpf::{macros::{kprobe, kretprobe}, programs::{ProbeContext, RetProbeContext}, helpers::bpf_printk};
 use aya_log_ebpf::info;
 
-#[kretprobe]
-pub fn dirt(ctx: RetProbeContext) -> u32 {
+#[kprobe]
+pub fn dirt(ctx: ProbeContext) -> u32 {
     match try_dirt(ctx) {
         Ok(ret) => ret,
         Err(ret) => ret,
@@ -72,6 +72,7 @@ fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
         }
     }
     
+
     Ok(0)
 }
 
