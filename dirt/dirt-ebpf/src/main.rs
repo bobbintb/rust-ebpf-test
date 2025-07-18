@@ -45,7 +45,7 @@ fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
     if let Some(dentry_ptr) = dentry {
         let mut filename: [u8; 64] = [0; 64];
         let filename_result = unsafe { 
-            aya_ebpf::helpers::bpf_probe_read_kernel_str_bytes(&mut filename, (dentry_ptr + 32) as *const u8) 
+            aya_ebpf::helpers::bpf_probe_read_kernel_str_bytes((dentry_ptr + 32) as *const u8, &mut filename) 
         };
         
         match filename_result {
