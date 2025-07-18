@@ -18,8 +18,11 @@ fn try_dirt(ctx: RetProbeContext) -> Result<u32, u32> {
     let pid = (pid_tgid >> 32) as u32;
     let tgid = (pid_tgid & 0xFFFFFFFF) as u32;
     
-    // Get return value
-    let ret_val = ctx.ret();
+    // Get return value - handle the Option type
+    let ret_val = match ctx.ret() {
+        Some(val) => val,
+        None => 0, // Default to 0 if no return value
+    };
     
     // Log detailed return information
     info!(&ctx, "DIRT: vfs_unlink RETURN - PID: {}, TGID: {}, Return: {}", 
@@ -48,7 +51,7 @@ fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
     
     // Get process name
     let mut comm: [u8; 16] = [0; 16];
-    let comm_result = bpf_get_current_comm(&mut comm);
+    let comm_result = bpf_get_current_comm(comm.as_mut_ptr());
     
     // Convert comm array to string for logging
     let comm_str = if comm_result == 0 {
@@ -71,13 +74,13 @@ fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
     
     unsafe {
         bpf_printk!(b"DIRT: vfs_unlink ENTRY - PID: %u, TGID: %u, Comm: %s", 
-                    pid, tgid, &comm);
+                    pid, tgid, comm.as_ptr());
     }
     Ok(0)
 }
 
 // BPF helper function declarations
-extern "C" {
+unsafe extern "C" {
     fn bpf_get_current_pid_tgid() -> u64;
     fn bpf_get_current_comm(buf: *mut u8) -> i32;
 }
