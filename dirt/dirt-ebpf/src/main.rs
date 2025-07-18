@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use aya_ebpf::{macros::kretprobe, programs::RetProbeContext};
+use aya_ebpf::{macros::{kprobe, kretprobe}, programs::{ProbeContext, RetProbeContext}};
 use aya_log_ebpf::info;
 
 #[kretprobe]
@@ -14,6 +14,19 @@ pub fn dirt(ctx: RetProbeContext) -> u32 {
 
 fn try_dirt(ctx: RetProbeContext) -> Result<u32, u32> {
     info!(&ctx, "kretprobe called");
+    Ok(0)
+}
+
+#[kprobe]
+pub fn vfs_unlink_probe(ctx: ProbeContext) -> u32 {
+    match try_vfs_unlink(ctx) {
+        Ok(ret) => ret,
+        Err(ret) => ret,
+    }
+}
+
+fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
+    info!(&ctx, "vfs_unlink kprobe triggered - file being unlinked");
     Ok(0)
 }
 

@@ -30,9 +30,16 @@ async fn main() -> anyhow::Result<()> {
         // This can happen if you remove all log statements from your eBPF program.
         warn!("failed to initialize eBPF logger: {e}");
     }
-    let program: &mut KProbe = ebpf.program_mut("dirt").unwrap().try_into()?;
-    program.load()?;
-    program.attach("vfs_unlink", 0)?;
+    
+    // Attach the existing kretprobe
+    let dirt_program: &mut KProbe = ebpf.program_mut("dirt").unwrap().try_into()?;
+    dirt_program.load()?;
+    dirt_program.attach("vfs_unlink", 0)?;
+    
+    // Attach the new kprobe for vfs_unlink
+    let vfs_unlink_program: &mut KProbe = ebpf.program_mut("vfs_unlink_probe").unwrap().try_into()?;
+    vfs_unlink_program.load()?;
+    vfs_unlink_program.attach("vfs_unlink", 0)?;
 
     let ctrl_c = signal::ctrl_c();
     println!("Waiting for Ctrl-C...");
