@@ -16,6 +16,7 @@ async fn main() -> anyhow::Result<()> {
 
     info!("=== DIRT eBPF File Deletion Monitor Starting ===");
     info!("Monitoring file deletions via vfs_unlink system calls");
+    info!("You'll see detailed process information for each deletion");
 
     // Bump the memlock rlimit. This is needed for older kernels that don't use the
     // new memcg based accounting, see https://lwn.net/Articles/837122/
@@ -64,9 +65,10 @@ async fn main() -> anyhow::Result<()> {
 
     info!("DIRT: === Monitoring Active ===");
     info!("DIRT: Both probes are now active and monitoring file deletions");
+    info!("DIRT: Each deletion will show: PID, TGID, Task pointer, and return code");
     info!("DIRT: Try deleting a file to see detailed output!");
     info!("DIRT: Example: 'touch /tmp/test && rm /tmp/test' in another terminal");
-    info!("DIRT: You should see both entry and exit logs for each deletion");
+    info!("DIRT: You can use 'ps -p <PID>' to see which process is deleting files");
     
     let ctrl_c = signal::ctrl_c();
     println!("DIRT: Waiting for Ctrl-C to stop monitoring...");

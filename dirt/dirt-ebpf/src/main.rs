@@ -19,11 +19,19 @@ fn try_dirt(ctx: RetProbeContext) -> Result<u32, u32> {
         None => 0, // Default to 0 if no return value
     };
     
-    // Log detailed return information
-    info!(&ctx, "DIRT: vfs_unlink RETURN - Return: {}", ret_val);
+    // Get current task info for process details
+    let task = unsafe { aya_ebpf::helpers::bpf_get_current_task() };
+    let pid = unsafe { aya_ebpf::helpers::bpf_get_current_pid_tgid() };
+    let pid_num = (pid >> 32) as u32;
+    let tgid_num = (pid & 0xFFFFFFFF) as u32;
+    
+    // Log detailed return information with process details
+    info!(&ctx, "DIRT: vfs_unlink RETURN - PID: {}, TGID: {}, Task: {}, Return: {}", 
+          pid_num, tgid_num, task, ret_val);
     
     unsafe {
-        bpf_printk!(b"DIRT: vfs_unlink RETURN - Return: %d", ret_val);
+        bpf_printk!(b"DIRT: vfs_unlink RETURN - PID: %u, TGID: %u, Return: %d", 
+                    pid_num, tgid_num, ret_val);
     }
     Ok(0)
 }
@@ -37,11 +45,19 @@ pub fn vfs_unlink_probe(ctx: ProbeContext) -> u32 {
 }
 
 fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
-    // Log detailed entry information
-    info!(&ctx, "DIRT: vfs_unlink ENTRY - File deletion detected");
+    // Get current task info for process details
+    let task = unsafe { aya_ebpf::helpers::bpf_get_current_task() };
+    let pid = unsafe { aya_ebpf::helpers::bpf_get_current_pid_tgid() };
+    let pid_num = (pid >> 32) as u32;
+    let tgid_num = (pid & 0xFFFFFFFF) as u32;
+    
+    // Log detailed entry information with process details
+    info!(&ctx, "DIRT: vfs_unlink ENTRY - PID: {}, TGID: {}, Task: {}", 
+          pid_num, tgid_num, task);
     
     unsafe {
-        bpf_printk!(b"DIRT: vfs_unlink ENTRY - File deletion detected");
+        bpf_printk!(b"DIRT: vfs_unlink ENTRY - PID: %u, TGID: %u", 
+                    pid_num, tgid_num);
     }
     Ok(0)
 }
