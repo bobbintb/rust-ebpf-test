@@ -14,7 +14,7 @@ pub fn dirt(ctx: RetProbeContext) -> u32 {
 
 fn try_dirt(ctx: RetProbeContext) -> Result<u32, u32> {
     // Get process information using BPF helpers
-    let pid_tgid = bpf_get_current_pid_tgid();
+    let pid_tgid = unsafe { bpf_get_current_pid_tgid() };
     let pid = (pid_tgid >> 32) as u32;
     let tgid = (pid_tgid & 0xFFFFFFFF) as u32;
     
@@ -45,13 +45,13 @@ pub fn vfs_unlink_probe(ctx: ProbeContext) -> u32 {
 
 fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
     // Get process information using BPF helpers
-    let pid_tgid = bpf_get_current_pid_tgid();
+    let pid_tgid = unsafe { bpf_get_current_pid_tgid() };
     let pid = (pid_tgid >> 32) as u32;
     let tgid = (pid_tgid & 0xFFFFFFFF) as u32;
     
     // Get process name
     let mut comm: [u8; 16] = [0; 16];
-    let comm_result = bpf_get_current_comm(comm.as_mut_ptr());
+    let comm_result = unsafe { bpf_get_current_comm(comm.as_mut_ptr()) };
     
     // Convert comm array to string for logging
     let comm_str = if comm_result == 0 {
