@@ -19,19 +19,11 @@ fn try_dirt(ctx: RetProbeContext) -> Result<u32, u32> {
         None => 0, // Default to 0 if no return value
     };
     
-    // Get current task info for process details
-    let task = unsafe { aya_ebpf::helpers::bpf_get_current_task() };
-    let pid = unsafe { aya_ebpf::helpers::bpf_get_current_pid_tgid() };
-    let pid_num = (pid >> 32) as u32;
-    let tgid_num = (pid & 0xFFFFFFFF) as u32;
-    
-    // Log detailed return information with process details
-    info!(&ctx, "DIRT: vfs_unlink RETURN - PID: {}, TGID: {}, Task: {}, Return: {}", 
-          pid_num, tgid_num, task, ret_val);
+    // Log return information
+    info!(&ctx, "DIRT: vfs_unlink RETURN - Return: {}", ret_val);
     
     unsafe {
-        bpf_printk!(b"DIRT: vfs_unlink RETURN - PID: %u, TGID: %u, Return: %d", 
-                    pid_num, tgid_num, ret_val);
+        bpf_printk!(b"DIRT: vfs_unlink RETURN - Return: %d", ret_val);
     }
     Ok(0)
 }
@@ -45,20 +37,38 @@ pub fn vfs_unlink_probe(ctx: ProbeContext) -> u32 {
 }
 
 fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
-    // Get current task info for process details
-    let task = unsafe { aya_ebpf::helpers::bpf_get_current_task() };
-    let pid = unsafe { aya_ebpf::helpers::bpf_get_current_pid_tgid() };
-    let pid_num = (pid >> 32) as u32;
-    let tgid_num = (pid & 0xFFFFFFFF) as u32;
+    // Get the dentry parameter (second parameter of vfs_unlink)
+    // vfs_unlink(struct inode *dir, struct dentry *dentry)
+    let dentry = ctx.arg::<u64>(1);
     
-    // Log detailed entry information with process details
-    info!(&ctx, "DIRT: vfs_unlink ENTRY - PID: {}, TGID: {}, Task: {}", 
-          pid_num, tgid_num, task);
-    
-    unsafe {
-        bpf_printk!(b"DIRT: vfs_unlink ENTRY - PID: %u, TGID: %u", 
-                    pid_num, tgid_num);
+    // Get the filename from the dentry
+    if let Some(dentry_ptr) = dentry {
+        let mut filename: [u8; 64] = [0; 64];
+        let filename_len = unsafe { 
+            aya_ebpf::helpers::bpf_probe_read_kernel_str(&mut filename, &(dentry_ptr + 32)) 
+        };
+        
+        if filename_len > 0 {
+            // Convert to string for logging
+            let name_str = core::str::from_utf8(&filename[..filename_len as usize]).unwrap_or("unknown");
+            info!(&ctx, "DIRT: vfs_unlink ENTRY - File: {}", name_str);
+            
+            unsafe {
+                bpf_printk!(b"DIRT: vfs_unlink ENTRY - File: %s", &filename);
+            }
+        } else {
+            info!(&ctx, "DIRT: vfs_unlink ENTRY - File: (could not read filename)");
+            unsafe {
+                bpf_printk!(b"DIRT: vfs_unlink ENTRY - File: (could not read filename)");
+            }
+        }
+    } else {
+        info!(&ctx, "DIRT: vfs_unlink ENTRY - File: (no dentry)");
+        unsafe {
+            bpf_printk!(b"DIRT: vfs_unlink ENTRY - File: (no dentry)");
+        }
     }
+    
     Ok(0)
 }
 
