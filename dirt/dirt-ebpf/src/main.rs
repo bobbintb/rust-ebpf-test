@@ -28,7 +28,7 @@ fn try_dirt(ctx: RetProbeContext) -> Result<u32, u32> {
     info!(&ctx, "DIRT: vfs_unlink RETURN - PID: {} TGID: {} Return: {}", current_pid, tgid, ret_val);
     
     unsafe {
-        bpf_printk!(b"DIRT: vfs_unlink RETURN - PID: %d TGID: %d Return: %d", current_pid, tgid, ret_val);
+        bpf_printk!(b"DIRT: vfs_unlink RETURN - {\"pid\": %d, \"tgid\": %d, \"return\": %d}", current_pid, tgid, ret_val);
     }
     Ok(0)
 }
