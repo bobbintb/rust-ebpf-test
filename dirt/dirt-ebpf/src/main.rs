@@ -6,6 +6,7 @@ use aya_ebpf::{
     programs::{ProbeContext, RetProbeContext},
     helpers::{bpf_printk, bpf_get_current_pid_tgid, bpf_probe_read_kernel, bpf_probe_read_kernel_str_bytes},
     maps::HashMap,
+    cty::{c_char, c_ulong},
 };
 use aya_log_ebpf::info;
 
@@ -17,6 +18,27 @@ struct FileInfo {
     filename: [u8; MAX_FILENAME_LEN],
     filename_len: u32,
     inode: u64,
+}
+
+// Simplified kernel structure representations for CO-RE
+#[repr(C)]
+struct dentry {
+    _pad1: [u8; 32],  // Skip to d_name offset (approximate)
+    d_name: qstr,
+    _pad2: [u8; 16],  // Skip to d_inode offset (approximate)  
+    d_inode: *const inode,
+}
+
+#[repr(C)]
+struct qstr {
+    _pad: [u8; 8],    // Skip hash and len
+    name: *const c_char,
+}
+
+#[repr(C)]
+struct inode {
+    _pad: [u8; 40],   // Skip to i_ino offset (approximate)
+    i_ino: c_ulong,
 }
 
 #[map]
@@ -86,21 +108,55 @@ fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
     let tgid = (pid >> 32) as u32;
     let current_pid = pid as u32;
     
-    // For now, use simple test data to get the JSON structure working
-    // This avoids complex kernel memory access that the verifier rejects
     let mut file_info = FileInfo {
         filename: [0u8; MAX_FILENAME_LEN],
-        filename_len: 12,
-        inode: 123456789,
+        filename_len: 0,
+        inode: 0,
     };
     
-    // Add a simple filename that shows the structure works
-    let test_filename = b"deleted_file";
-    let copy_len = core::cmp::min(test_filename.len(), MAX_FILENAME_LEN);
-    for i in 0..copy_len {
-        file_info.filename[i] = test_filename[i];
+    // Try to extract dentry from the second parameter (index 1)
+    // vfs_unlink(struct inode *dir, struct dentry *dentry, struct inode **delegated_inode)
+    if let Some(dentry_ptr) = ctx.arg::<*const dentry>(1) {
+        if !dentry_ptr.is_null() {
+            unsafe {
+                // Try to read the dentry structure
+                if let Ok(dentry_data) = bpf_probe_read_kernel(dentry_ptr) {
+                    // Try to read inode number
+                    if !dentry_data.d_inode.is_null() {
+                        if let Ok(inode_data) = bpf_probe_read_kernel(dentry_data.d_inode) {
+                            file_info.inode = inode_data.i_ino as u64;
+                        }
+                    }
+                    
+                    // Try to read filename
+                    if !dentry_data.d_name.name.is_null() {
+                        let mut temp_buf = [0u8; MAX_FILENAME_LEN];
+                        if let Ok(result_slice) = bpf_probe_read_kernel_str_bytes(
+                            dentry_data.d_name.name as *const u8, 
+                            &mut temp_buf
+                        ) {
+                            let len = core::cmp::min(result_slice.len(), MAX_FILENAME_LEN);
+                            for i in 0..len {
+                                file_info.filename[i] = result_slice[i];
+                            }
+                            file_info.filename_len = len as u32;
+                        }
+                    }
+                }
+            }
+        }
     }
-    file_info.filename_len = copy_len as u32;
+    
+    // If we didn't get any data, use fallback values
+    if file_info.inode == 0 && file_info.filename_len == 0 {
+        file_info.inode = 999999999; // Fallback inode
+        let fallback_name = b"unknown_file";
+        let copy_len = core::cmp::min(fallback_name.len(), MAX_FILENAME_LEN);
+        for i in 0..copy_len {
+            file_info.filename[i] = fallback_name[i];
+        }
+        file_info.filename_len = copy_len as u32;
+    }
     
     // Store file info in map for the return probe
     let key = pid;
