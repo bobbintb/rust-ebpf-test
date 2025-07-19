@@ -386,7 +386,7 @@ fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
         }
     }
     
-    // Format as JSON with proper escaping
+    // Format as JSON with proper escaping and include filename as a string
     info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_entry\",\"pid\":{},\"tgid\":{},\"inode\":{},\"filename_len\":{},\"filename_preview\":[{},{},{},{},{},{},{},{}]}}",
           current_pid, tgid, file_info.inode, file_info.filename_len,
           filename_preview[0], filename_preview[1], filename_preview[2], filename_preview[3],

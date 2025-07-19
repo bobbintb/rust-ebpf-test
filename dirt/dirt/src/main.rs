@@ -1,7 +1,62 @@
 use aya::programs::KProbe;
 #[rustfmt::skip]
-use log::{debug, info, warn};
+use log::{debug, info, warn, Log, Record, Level, Metadata};
 use tokio::signal;
+use std::sync::mpsc;
+use std::thread;
+use serde_json::{Value, json};
+
+// Custom log handler to intercept log messages
+struct LogHandler {
+    sender: mpsc::Sender<String>,
+    original_logger: env_logger::Logger,
+}
+
+impl LogHandler {
+    fn new(sender: mpsc::Sender<String>) -> Self {
+        LogHandler {
+            sender,
+            original_logger: env_logger::Builder::new().build(),
+        }
+    }
+}
+
+impl Log for LogHandler {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        self.original_logger.enabled(metadata)
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            let message = format!("{}", record.args());
+            
+            // Send the message to our processor thread
+            let _ = self.sender.send(message.clone());
+            
+            // Also log using the original logger if it's not a JSON message
+            if !message.contains("DIRT_JSON:") {
+                self.original_logger.log(record);
+            }
+        }
+    }
+
+    fn flush(&self) {
+        self.original_logger.flush();
+    }
+}
+
+// Function to convert byte array to readable string
+fn bytes_to_string(bytes: &[u64]) -> String {
+    bytes.iter()
+        .map(|&b| {
+            if b >= 32 && b <= 126 {
+                char::from_u32(b as u32).unwrap_or('?')
+            } else {
+                '?'
+            }
+        })
+        .collect()
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -70,8 +125,60 @@ async fn main() -> anyhow::Result<()> {
     info!("DIRT: Example: 'touch /tmp/test && rm /tmp/test' in another terminal");
     info!("DIRT: You can use 'ps -p <PID>' to see which process is deleting files");
     
-    // Add a note about JSON output
-    info!("DIRT: JSON output will include filename_preview with ASCII values");
+    // Start a thread to process logs and enhance JSON output
+    info!("DIRT: Starting JSON output processor...");
+    
+    // Create a pipe for log processing
+    let (tx, rx) = std::sync::mpsc::channel();
+    
+    // Clone the transmitter for the log handler
+    let tx_clone = tx.clone();
+    
+    // Set up a custom log handler
+    let _ = log::set_boxed_logger(Box::new(LogHandler::new(tx_clone)))
+        .map(|()| log::set_max_level(log::LevelFilter::Info));
+    
+    // Start the log processor thread
+    let _processor = thread::spawn(move || {
+        for message in rx {
+            if message.contains("DIRT_JSON:") {
+                if let Some(json_start) = message.find('{') {
+                    if let Some(json_end) = message.rfind('}') {
+                        let json_str = &message[json_start..=json_end];
+                        
+                        // Parse the JSON
+                        if let Ok(mut json_value) = serde_json::from_str::<Value>(json_str) {
+                            // Convert filename_preview to a readable string
+                            if let Some(preview_array) = json_value.get("filename_preview").and_then(Value::as_array) {
+                                let filename_str = bytes_to_string(
+                                    &preview_array.iter()
+                                        .filter_map(|v| v.as_u64())
+                                        .collect::<Vec<u64>>()
+                                );
+                                
+                                // Add the string representation to the JSON
+                                if let Some(obj) = json_value.as_object_mut() {
+                                    obj.insert("filename".to_string(), json!(filename_str));
+                                }
+                                
+                                println!("[INFO] DIRT_JSON_ENHANCED: {}", json_value.to_string());
+                            } else {
+                                println!("{}", message);
+                            }
+                        } else {
+                            println!("{}", message);
+                        }
+                    } else {
+                        println!("{}", message);
+                    }
+                } else {
+                    println!("{}", message);
+                }
+            } else {
+                println!("{}", message);
+            }
+        }
+    });
     
     let ctrl_c = signal::ctrl_c();
     println!("DIRT: Waiting for Ctrl-C to stop monitoring...");
