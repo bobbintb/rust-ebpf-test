@@ -4,8 +4,8 @@
 use aya_ebpf::{macros::{kprobe, kretprobe}, programs::{ProbeContext, RetProbeContext}, helpers::bpf_printk};
 use aya_log_ebpf::info;
 
-#[kprobe]
-pub fn dirt(ctx: ProbeContext) -> u32 {
+#[kretprobe]
+pub fn dirt(ctx: RetProbeContext) -> u32 {
     match try_dirt(ctx) {
         Ok(ret) => ret,
         Err(ret) => ret,
@@ -37,42 +37,18 @@ pub fn vfs_unlink_probe(ctx: ProbeContext) -> u32 {
 }
 
 fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
-    // Get the dentry parameter (second parameter of vfs_unlink)
-    // vfs_unlink(struct inode *dir, struct dentry *dentry)
-    let dentry = ctx.arg::<u64>(1);
+    // Get process information
+    let pid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
+    let tgid = (pid >> 32) as u32;
+    let current_pid = pid as u32;
     
-    // Get the filename from the dentry
-    if let Some(dentry_ptr) = dentry {
-        let mut filename: [u8; 64] = [0; 64];
-        let filename_result = unsafe { 
-            aya_ebpf::helpers::bpf_probe_read_kernel_str_bytes((dentry_ptr + 32) as *const u8, &mut filename) 
-        };
-        
-        match filename_result {
-            Ok(len) if len > 0 => {
-                // Convert to string for logging
-                let name_str = core::str::from_utf8(&filename[..len]).unwrap_or("unknown");
-                info!(&ctx, "DIRT: vfs_unlink ENTRY - File: {}", name_str);
-                
-                unsafe {
-                    bpf_printk!(b"DIRT: vfs_unlink ENTRY - File: %s", filename.as_ptr());
-                }
-            }
-            _ => {
-                info!(&ctx, "DIRT: vfs_unlink ENTRY - File: (could not read filename)");
-                unsafe {
-                    bpf_printk!(b"DIRT: vfs_unlink ENTRY - File: (could not read filename)");
-                }
-            }
-        }
-    } else {
-        info!(&ctx, "DIRT: vfs_unlink ENTRY - File: (no dentry)");
-        unsafe {
-            bpf_printk!(b"DIRT: vfs_unlink ENTRY - File: (no dentry)");
-        }
+    // Log entry information with process details
+    info!(&ctx, "DIRT: vfs_unlink ENTRY - PID: {} TGID: {}", current_pid, tgid);
+    
+    unsafe {
+        bpf_printk!(b"DIRT: vfs_unlink ENTRY - PID: %d TGID: %d", current_pid, tgid);
     }
     
-
     Ok(0)
 }
 
