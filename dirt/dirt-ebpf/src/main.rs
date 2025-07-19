@@ -24,8 +24,8 @@ fn try_dirt(ctx: RetProbeContext) -> Result<u32, u32> {
     let tgid = (pid >> 32) as u32;
     let current_pid = pid as u32;
     
-    // Log return information
-    info!(&ctx, "DIRT: vfs_unlink RETURN - PID: {} TGID: {} Return: {}", current_pid, tgid, ret_val);
+    // Log return information in JSON format
+    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_return\",\"pid\":{},\"tgid\":{},\"return\":{}}}", current_pid, tgid, ret_val);
     
     unsafe {
         bpf_printk!(b"DIRT: vfs_unlink RETURN - {\"pid\": %d, \"tgid\": %d, \"return\": %d}", current_pid, tgid, ret_val);
@@ -47,11 +47,11 @@ fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
     let tgid = (pid >> 32) as u32;
     let current_pid = pid as u32;
     
-    // Log entry information with process details
-    info!(&ctx, "DIRT: vfs_unlink ENTRY - PID: {} TGID: {}", current_pid, tgid);
+    // Log entry information with process details in JSON format
+    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_entry\",\"pid\":{},\"tgid\":{}}}", current_pid, tgid);
     
     unsafe {
-        bpf_printk!(b"DIRT: vfs_unlink ENTRY - PID: %d TGID: %d", current_pid, tgid);
+        bpf_printk!(b"DIRT: vfs_unlink ENTRY - {\"pid\": %d, \"tgid\": %d}", current_pid, tgid);
     }
     
     Ok(0)

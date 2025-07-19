@@ -65,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
 
     info!("DIRT: === Monitoring Active ===");
     info!("DIRT: Both probes are now active and monitoring file deletions");
-    info!("DIRT: Each deletion will show: PID, TGID, Task pointer, and return code");
+    info!("DIRT: Each deletion will show structured JSON output with event type, timestamp, process info, and return values");
     info!("DIRT: Try deleting a file to see detailed output!");
     info!("DIRT: Example: 'touch /tmp/test && rm /tmp/test' in another terminal");
     info!("DIRT: You can use 'ps -p <PID>' to see which process is deleting files");
