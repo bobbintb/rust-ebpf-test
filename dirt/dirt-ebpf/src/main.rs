@@ -19,11 +19,16 @@ fn try_dirt(ctx: RetProbeContext) -> Result<u32, u32> {
         None => 0, // Default to 0 if no return value
     };
     
+    // Get process information
+    let pid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
+    let tgid = (pid >> 32) as u32;
+    let current_pid = pid as u32;
+    
     // Log return information
-    info!(&ctx, "DIRT: vfs_unlink RETURN - Return: {}", ret_val);
+    info!(&ctx, "DIRT: vfs_unlink RETURN - PID: {} TGID: {} Return: {}", current_pid, tgid, ret_val);
     
     unsafe {
-        bpf_printk!(b"DIRT: vfs_unlink RETURN - Return: %d", ret_val);
+        bpf_printk!(b"DIRT: vfs_unlink RETURN - PID: %d TGID: %d Return: %d", current_pid, tgid, ret_val);
     }
     Ok(0)
 }
