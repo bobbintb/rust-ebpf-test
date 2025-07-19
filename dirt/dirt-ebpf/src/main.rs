@@ -97,10 +97,19 @@ fn try_dirt(ctx: RetProbeContext) -> Result<u32, u32> {
             // Include filename preview in return probe as well
             let mut filename_preview = [0u8; 8];
             let preview_len = core::cmp::min(file_info.filename_len as usize, 8);
+            
+            // Ensure we only use printable ASCII characters for the preview
             for i in 0..preview_len {
-                filename_preview[i] = file_info.filename[i];
+                let c = file_info.filename[i];
+                if is_valid_ascii(c) {
+                    filename_preview[i] = c;
+                } else {
+                    // Replace non-printable characters with '?'
+                    filename_preview[i] = 63; // ASCII for '?'
+                }
             }
             
+            // Format as JSON with proper escaping
             info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_return\",\"pid\":{},\"tgid\":{},\"return\":{},\"inode\":{},\"filename_len\":{},\"filename_preview\":[{},{},{},{},{},{},{},{}]}}", 
                   current_pid, tgid, ret_val, file_info.inode, file_info.filename_len,
                   filename_preview[0], filename_preview[1], filename_preview[2], filename_preview[3],
@@ -343,6 +352,21 @@ fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
         file_info.filename_len = (prefix_len + code_len) as u32;
     }
     
+    // Ensure we have valid data even if something went wrong
+    if file_info.inode == 0 {
+        file_info.inode = 999999999; // Special value indicating unknown inode
+    }
+    
+    // Ensure we have a valid filename length
+    if file_info.filename_len == 0 {
+        let unknown = b"unknown_file";
+        let len = core::cmp::min(unknown.len(), MAX_FILENAME_LEN);
+        for i in 0..len {
+            file_info.filename[i] = unknown[i];
+        }
+        file_info.filename_len = len as u32;
+    }
+    
     // Store file info in map for the return probe
     let key = pid;
     let _ = FILE_INFO_MAP.insert(&key, &file_info, 0);
@@ -350,11 +374,20 @@ fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
     // Log entry information with file details in JSON format
     let mut filename_preview = [0u8; 8];
     let preview_len = core::cmp::min(file_info.filename_len as usize, 8);
+    
+    // Ensure we only use printable ASCII characters for the preview
     for i in 0..preview_len {
-        filename_preview[i] = file_info.filename[i];
+        let c = file_info.filename[i];
+        if is_valid_ascii(c) {
+            filename_preview[i] = c;
+        } else {
+            // Replace non-printable characters with '?'
+            filename_preview[i] = 63; // ASCII for '?'
+        }
     }
     
-    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_entry\",\"pid\":{},\"tgid\":{},\"inode\":{},\"filename_len\":{},\"filename_preview\":[{},{},{},{},{},{},{},{}]}}", 
+    // Format as JSON with proper escaping
+    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_entry\",\"pid\":{},\"tgid\":{},\"inode\":{},\"filename_len\":{},\"filename_preview\":[{},{},{},{},{},{},{},{}]}}",
           current_pid, tgid, file_info.inode, file_info.filename_len,
           filename_preview[0], filename_preview[1], filename_preview[2], filename_preview[3],
           filename_preview[4], filename_preview[5], filename_preview[6], filename_preview[7]);
@@ -387,6 +420,13 @@ fn get_debug_code_str(code: u32) -> &'static [u8] {
         20..=30 => b"20+_offset_ok",
         _ => b"unknown",
     }
+}
+
+// Helper function to check if a byte is a valid ASCII character
+#[inline]
+fn is_valid_ascii(byte: u8) -> bool {
+    // Only include printable ASCII characters (32-126)
+    byte >= 32 && byte <= 126
 }
 
 #[cfg(not(test))]
