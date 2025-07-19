@@ -2,6 +2,7 @@ use aya::programs::KProbe;
 #[rustfmt::skip]
 use log::{debug, info, warn};
 use tokio::signal;
+use serde_json::{Value, json};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -69,6 +70,9 @@ async fn main() -> anyhow::Result<()> {
     info!("DIRT: Try deleting a file to see detailed output!");
     info!("DIRT: Example: 'touch /tmp/test && rm /tmp/test' in another terminal");
     info!("DIRT: You can use 'ps -p <PID>' to see which process is deleting files");
+    
+    // Add a note about JSON output
+    info!("DIRT: JSON output will include filename_preview with ASCII values");
     
     let ctrl_c = signal::ctrl_c();
     println!("DIRT: Waiting for Ctrl-C to stop monitoring...");
