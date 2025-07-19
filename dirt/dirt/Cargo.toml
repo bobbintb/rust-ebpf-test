@@ -21,6 +21,7 @@ tokio = { workspace = true, features = [
     "net",
     "signal",
 ] }
+serde_json = "1.0.141"
 [build-dependencies]
 anyhow = { workspace = true }
 aya-build = { workspace = true }

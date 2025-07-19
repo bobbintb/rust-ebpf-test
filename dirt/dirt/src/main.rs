@@ -2,7 +2,6 @@ use aya::programs::KProbe;
 #[rustfmt::skip]
 use log::{debug, info, warn};
 use tokio::signal;
-use serde_json::{Value, json};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
