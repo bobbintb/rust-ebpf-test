@@ -1,7 +1,15 @@
-use aya::programs::KProbe;
+use aya::{
+    include_bytes_aligned,
+    maps::perf::AsyncPerfEventArray,
+    programs::KProbe,
+    util::online_cpus,
+    Ebpf,
+};
+use bytes::Bytes;
+use dirt_common::UnlinkEvent;
 #[rustfmt::skip]
 use log::{debug, info, warn};
-use tokio::signal;
+use tokio::{signal, task};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -62,6 +70,30 @@ async fn main() -> anyhow::Result<()> {
     vfs_unlink_program.load()?;
     vfs_unlink_program.attach("vfs_unlink", 0)?;
     info!("DIRT: kprobe 'vfs_unlink_probe' attached successfully to vfs_unlink");
+
+    let mut events =
+        AsyncPerfEventArray::try_from(ebpf.map_mut("EVENTS").unwrap())?;
+
+    for cpu_id in online_cpus()? {
+        let mut buf = events.open(cpu_id, None)?;
+
+        task::spawn(async move {
+            let mut buffers = (0..10)
+                .map(|_| Bytes::with_capacity(4096))
+                .collect::<Vec<_>>();
+
+            loop {
+                let events = buf.read_events(&mut buffers).await.unwrap();
+                for i in 0..events.read {
+                    let buf = &mut buffers[i];
+                    let ptr = buf.as_ptr() as *const UnlinkEvent;
+                    let event = unsafe { ptr.read_unaligned() };
+                    info!("DIRT_JSON: {{\"event\":\"vfs_unlink_entry\",\"pid\":{},\"tgid\":{},\"inode\":{}}}", event.pid, event.tgid, event.inode);
+                }
+            }
+        });
+    }
+
 
     info!("DIRT: === Monitoring Active ===");
     info!("DIRT: Both probes are now active and monitoring file deletions");

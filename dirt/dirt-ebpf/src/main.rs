@@ -1,8 +1,12 @@
 #![no_std]
 #![no_main]
 
-use aya_ebpf::{macros::{kprobe, kretprobe}, programs::{ProbeContext, RetProbeContext}, helpers::bpf_printk};
+use aya_ebpf::{macros::{kprobe, kretprobe}, programs::{ProbeContext, RetProbeContext}, helpers::bpf_printk, maps::PerfEventArray};
 use aya_log_ebpf::info;
+
+mod vmlinux;
+use vmlinux::{dentry, inode};
+use dirt_common::UnlinkEvent;
 
 #[kretprobe]
 pub fn dirt(ctx: RetProbeContext) -> u32 {
@@ -42,10 +46,20 @@ pub fn vfs_unlink_probe(ctx: ProbeContext) -> u32 {
 }
 
 fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
-    // Get process information
+    let dentry: *const dentry = unsafe { ctx.arg(1) }.ok_or(1u32)?;
+    let inode: *const inode = unsafe { (*dentry).d_inode };
+    let i_ino = unsafe { (*inode).i_ino };
+
     let pid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
     let tgid = (pid >> 32) as u32;
     let current_pid = pid as u32;
+
+    let event = UnlinkEvent {
+        pid: current_pid,
+        tgid,
+        inode: i_ino,
+    };
+    EVENTS.output(&ctx, &event, 0);
     
     // Log entry information with process details in JSON format
     info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_entry\",\"pid\":{},\"tgid\":{}}}", current_pid, tgid);
@@ -66,3 +80,9 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 #[unsafe(link_section = "license")]
 #[unsafe(no_mangle)]
 static LICENSE: [u8; 13] = *b"Dual MIT/GPL\0";
+
+use dirt_common::UnlinkEvent;
+
+#[map]
+static mut EVENTS: PerfEventArray<UnlinkEvent> =
+    PerfEventArray::<UnlinkEvent>::with_max_entries(1024, 0);
