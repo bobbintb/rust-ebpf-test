@@ -1,0 +1,1 @@
+/rust-ebpf-test/dirt/target/debug/build/dirt-119afbb9c04e510d/out/dirt-ebpf/bpfel-unknown-none/release/dirt: /root/.cargo/bin/bpf-linker /rust-ebpf-test/dirt/dirt-common/src/lib.rs /rust-ebpf-test/dirt/dirt-ebpf/build.rs /rust-ebpf-test/dirt/dirt-ebpf/src/lib.rs /rust-ebpf-test/dirt/dirt-ebpf/src/main.rs

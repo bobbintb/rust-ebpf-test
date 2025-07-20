@@ -1,0 +1,10 @@
+/rust-ebpf-test/dirt/target/debug/build/dirt-119afbb9c04e510d/out/dirt-ebpf/bpfel-unknown-none/release/deps/aya_ebpf_bindings-4156a498dcbb215e.d: /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aya-ebpf-bindings-0.1.1/src/lib.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aya-ebpf-bindings-0.1.1/src/x86_64/mod.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aya-ebpf-bindings-0.1.1/src/x86_64/bindings.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aya-ebpf-bindings-0.1.1/src/x86_64/helpers.rs
+
+/rust-ebpf-test/dirt/target/debug/build/dirt-119afbb9c04e510d/out/dirt-ebpf/bpfel-unknown-none/release/deps/libaya_ebpf_bindings-4156a498dcbb215e.rlib: /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aya-ebpf-bindings-0.1.1/src/lib.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aya-ebpf-bindings-0.1.1/src/x86_64/mod.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aya-ebpf-bindings-0.1.1/src/x86_64/bindings.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aya-ebpf-bindings-0.1.1/src/x86_64/helpers.rs
+
+/rust-ebpf-test/dirt/target/debug/build/dirt-119afbb9c04e510d/out/dirt-ebpf/bpfel-unknown-none/release/deps/libaya_ebpf_bindings-4156a498dcbb215e.rmeta: /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aya-ebpf-bindings-0.1.1/src/lib.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aya-ebpf-bindings-0.1.1/src/x86_64/mod.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aya-ebpf-bindings-0.1.1/src/x86_64/bindings.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aya-ebpf-bindings-0.1.1/src/x86_64/helpers.rs
+
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aya-ebpf-bindings-0.1.1/src/lib.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aya-ebpf-bindings-0.1.1/src/x86_64/mod.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aya-ebpf-bindings-0.1.1/src/x86_64/bindings.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aya-ebpf-bindings-0.1.1/src/x86_64/helpers.rs:
