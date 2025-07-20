@@ -43,7 +43,7 @@ pub fn vfs_unlink_probe(ctx: ProbeContext) -> u32 {
 }
 
 fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
-    let dentry: *const () = unsafe { ctx.arg(1) }.ok_or(1u32)?;
+    let dentry: *const () = ctx.arg(1).ok_or(1u32)?;
     let inode: *const () = unsafe { *(dentry as *const *const ()) };
     let i_ino = unsafe { *(inode.offset(24) as *const u64) };
 
