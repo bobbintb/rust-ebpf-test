@@ -49,18 +49,18 @@ async fn main() -> anyhow::Result<()> {
         info!("DIRT: eBPF logger initialized successfully");
     }
     
-    // Attach the existing kretprobe
+    // Attach the kretprobe
     info!("DIRT: Loading and attaching kretprobe 'dirt'...");
-    let dirt_program: &mut KProbe = ebpf.program_mut("dirt").unwrap().try_into()?;
-    dirt_program.load()?;
-    dirt_program.attach("vfs_unlink", 0)?;
+    let kretprobe: &mut KProbe = ebpf.program_mut("dirt").unwrap().try_into()?;
+    kretprobe.load()?;
+    kretprobe.attach("vfs_unlink", 0)?;
     info!("DIRT: kretprobe 'dirt' attached successfully to vfs_unlink");
     
-    // Attach the new kprobe for vfs_unlink
+    // Attach the kprobe
     info!("DIRT: Loading and attaching kprobe 'vfs_unlink_probe'...");
-    let vfs_unlink_program: &mut KProbe = ebpf.program_mut("vfs_unlink_probe").unwrap().try_into()?;
-    vfs_unlink_program.load()?;
-    vfs_unlink_program.attach("vfs_unlink", 0)?;
+    let kprobe: &mut KProbe = ebpf.program_mut("vfs_unlink_probe").unwrap().try_into()?;
+    kprobe.load()?;
+    kprobe.attach("vfs_unlink", 0)?;
     info!("DIRT: kprobe 'vfs_unlink_probe' attached successfully to vfs_unlink");
 
     info!("DIRT: === Monitoring Active ===");
