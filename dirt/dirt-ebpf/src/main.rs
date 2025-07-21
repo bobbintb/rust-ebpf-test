@@ -1,8 +1,20 @@
 #![no_std]
 #![no_main]
 
-use aya_ebpf::{macros::{kprobe, kretprobe}, programs::{ProbeContext, RetProbeContext}, helpers::bpf_printk};
+use aya_ebpf::{macros::{kprobe, kretprobe}, programs::{ProbeContext, RetProbeContext}, macros::map, maps::PerCpuArray};
 use aya_log_ebpf::info;
+use dirt_common::UnlinkEvent;
+
+#[allow(non_upper_case_globals)]
+#[allow(non_snake_case)]
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+mod vmlinux;
+
+use vmlinux::{dentry, inode};
+
+#[map]
+static mut EVENTS: PerCpuArray<UnlinkEvent> = PerCpuArray::with_max_entries(1024, 0);
 
 #[kretprobe]
 pub fn dirt(ctx: RetProbeContext) -> u32 {
@@ -13,23 +25,24 @@ pub fn dirt(ctx: RetProbeContext) -> u32 {
 }
 
 fn try_dirt(ctx: RetProbeContext) -> Result<u32, u32> {
-    // Get return value - handle the Option type
     let ret_val = match ctx.ret() {
         Some(val) => val,
-        None => 0, // Default to 0 if no return value
+        None => 0,
     };
-    
-    // Get process information
+
     let pid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
     let tgid = (pid >> 32) as u32;
     let current_pid = pid as u32;
-    
-    // Log return information in JSON format
-    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_return\",\"pid\":{},\"tgid\":{},\"return\":{}}}", current_pid, tgid, ret_val);
-    
+
+    let mut inode = 0;
     unsafe {
-        bpf_printk!(b"DIRT: vfs_unlink RETURN - {\"pid\": %d, \"tgid\": %d, \"return\": %d}", current_pid, tgid, ret_val);
+        if let Some(event) = EVENTS.get(0) {
+            inode = event.inode;
+        }
     }
+
+    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_return\",\"pid\":{},\"tgid\":{},\"return\":{},\"inode\":{}}}", current_pid, tgid, ret_val, inode);
+
     Ok(0)
 }
 
@@ -42,18 +55,24 @@ pub fn vfs_unlink_probe(ctx: ProbeContext) -> u32 {
 }
 
 fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
-    // Get process information
+    let dentry: *const dentry = unsafe { ctx.arg(1) }.ok_or(1u32)?;
+    let d_inode: *const inode = unsafe { (*dentry).d_inode };
+    let i_ino = unsafe { (*d_inode).i_ino };
+
+    let event = UnlinkEvent { inode: i_ino };
+
     let pid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
     let tgid = (pid >> 32) as u32;
     let current_pid = pid as u32;
-    
-    // Log entry information with process details in JSON format
-    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_entry\",\"pid\":{},\"tgid\":{}}}", current_pid, tgid);
-    
+
     unsafe {
-        bpf_printk!(b"DIRT: vfs_unlink ENTRY - {\"pid\": %d, \"tgid\": %d}", current_pid, tgid);
+        if let Some(val_ptr) = EVENTS.get_ptr_mut(0) {
+            *val_ptr = event;
+        }
     }
-    
+
+    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_entry\",\"pid\":{},\"tgid\":{},\"inode\":{}}}", current_pid, tgid, i_ino);
+
     Ok(0)
 }
 
