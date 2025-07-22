@@ -41,8 +41,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Monitoring file deletions...");
 
     let mut tasks = Vec::new();
-    for i in 0..logger.len() {
-        let log = logger.next().await.unwrap();
+    while let Some(log) = logger.next().await {
         let task = tokio::spawn(async move {
             let mut buf = [0u8; 1024];
             loop {
