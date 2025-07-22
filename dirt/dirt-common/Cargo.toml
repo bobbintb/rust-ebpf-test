@@ -7,10 +7,11 @@ license.workspace = true
 
 [features]
 default = []
-user = ["aya"]
+user = ["aya", "serde"]
 
 [dependencies]
 aya = { workspace = true, optional = true }
+serde = { workspace = true, optional = true, features = ["derive"] }
 
 [lib]
 path = "src/lib.rs"
