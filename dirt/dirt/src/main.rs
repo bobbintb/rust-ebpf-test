@@ -2,18 +2,6 @@ use aya::programs::KProbe;
 use log::{info, warn, debug};
 use tokio::signal;
 use aya_log::EbpfLogger;
-use std::os::unix::fs::MetadataExt;
-use serde::Serialize;
-use serde_json;
-
-#[derive(Serialize)]
-struct FileDeleteEvent {
-    event: String,
-    pid: u32,
-    tgid: u32,
-    inode: u64,
-    ret: i64,
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -64,21 +52,7 @@ async fn main() -> anyhow::Result<()> {
                     Ok(len) => {
                         let msg = String::from_utf8_lossy(&buf[..len]);
                         if let Some(json_str) = msg.strip_prefix("DIRT_JSON: ") {
-                            if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(json_str) {
-                                if let Some(path_bytes) = json.get("path_bytes").and_then(|p| p.as_array()) {
-                                    let path_bytes: Vec<u8> = path_bytes.iter().map(|v| v.as_u64().unwrap_or(0) as u8).collect();
-                                    if let Ok(path_str) = String::from_utf8(path_bytes) {
-                                        if let Ok(metadata) = std::fs::metadata(&path_str) {
-                                            json["inode"] = serde_json::Value::from(metadata.ino());
-                                        }
-                                        json["path"] = serde_json::Value::from(path_str);
-                                    }
-                                }
-                                json.remove("path_bytes");
-                                if let Ok(pretty_json) = serde_json::to_string_pretty(&json) {
-                                    println!("{}", pretty_json);
-                                }
-                            }
+                            println!("{}", json_str);
                         }
                     }
                     Err(e) => {

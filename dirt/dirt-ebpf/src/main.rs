@@ -41,21 +41,14 @@ pub fn vfs_unlink_probe(ctx: ProbeContext) -> u32 {
     }
 }
 
-use aya_ebpf::helpers::bpf_probe_read_user_str_bytes;
-
 fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
     // Get process information
     let pid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
     let tgid = (pid >> 32) as u32;
     let current_pid = pid as u32;
 
-    // Get file path
-    let path_ptr: *const u8 = ctx.arg(1).ok_or(1u32)?;
-    let mut path_bytes = [0u8; 256];
-    let path_len = unsafe { bpf_probe_read_user_str_bytes(path_ptr, &mut path_bytes) }.map_err(|e| e as u32)?;
-
     // Log entry information with process details in JSON format
-    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_entry\",\"pid\":{},\"tgid\":{},\"path_bytes\":{:?}}}", current_pid, tgid, &path_bytes[..path_len as usize]);
+    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_entry\",\"pid\":{},\"tgid\":{}}}", current_pid, tgid);
 
     unsafe {
         bpf_printk!(b"DIRT: vfs_unlink ENTRY - {\"pid\": %d, \"tgid\": %d}", current_pid, tgid);
