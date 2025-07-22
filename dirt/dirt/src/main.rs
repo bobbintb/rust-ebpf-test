@@ -1,69 +1,97 @@
-use aya::{
-    include_bytes_aligned,
-    maps::perf::AsyncPerfEventArray,
-    programs::KProbe,
-    util::online_cpus,
-    Bpf,
-};
-use bytes::Bytes;
-use dirt_common::FileDeleteEvent;
-use log::{info, warn};
-use std::mem;
-use tokio::{signal, task};
+use aya::programs::KProbe;
+use log::{info, warn, debug};
+use tokio::signal;
+use aya_log::EbpfLogger;
+use std::os::unix::fs::MetadataExt;
+use serde::Serialize;
+use serde_json;
+
+#[derive(Serialize)]
+struct FileDeleteEvent {
+    event: String,
+    pid: u32,
+    tgid: u32,
+    inode: u64,
+    ret: i64,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    env_logger::builder()
-        .filter_level(log::LevelFilter::Info)
+    let env = env_logger::Env::default().default_filter_or("info");
+    env_logger::Builder::from_env(env)
+        .format_timestamp_millis()
+        .format_module_path(false)
+        .format_target(false)
         .init();
 
-    info!("Starting DIRT eBPF File Deletion Monitor");
+    info!("=== DIRT eBPF File Deletion Monitor Starting ===");
 
     let rlim = libc::rlimit {
         rlim_cur: libc::RLIM_INFINITY,
         rlim_max: libc::RLIM_INFINITY,
     };
     if unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &rlim) } != 0 {
-        warn!("Failed to remove limit on locked memory");
+        debug!("Failed to remove limit on locked memory");
     }
 
-    let mut bpf = Bpf::load(include_bytes_aligned!(concat!(
+    let mut bpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
         env!("OUT_DIR"),
         "/dirt"
     )))?;
 
-    let program: &mut KProbe = bpf.program_mut("dirt").unwrap().try_into()?;
-    program.load()?;
-    program.attach("vfs_unlink", 0)?;
+    if let Err(e) = EbpfLogger::init(&mut bpf) {
+        warn!("Failed to initialize eBPF logger: {}", e);
+    }
+
+    let dirt_program: &mut KProbe = bpf.program_mut("dirt").unwrap().try_into()?;
+    dirt_program.load()?;
+    dirt_program.attach("vfs_unlink", 0)?;
 
     let vfs_unlink_program: &mut KProbe = bpf.program_mut("vfs_unlink_probe").unwrap().try_into()?;
     vfs_unlink_program.load()?;
     vfs_unlink_program.attach("vfs_unlink", 0)?;
 
-    let mut events = AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS")?)?;
+    info!("Monitoring file deletions...");
 
-    for cpu_id in online_cpus()? {
-        let mut buf = events.open(cpu_id, None)?;
-
-        task::spawn(async move {
-            let mut buffers = (0..10)
-                .map(|_| Bytes::with_capacity(mem::size_of::<FileDeleteEvent>()))
-                .collect::<Vec<_>>();
-
+    let mut logs = EbpfLogger::logs(&bpf)?;
+    let mut tasks = Vec::new();
+    for i in 0..logs.len() {
+        let log = logs.remove(0);
+        let task = tokio::spawn(async move {
+            let mut buf = [0u8; 1024];
             loop {
-                let events = buf.read_events(&mut buffers).await.unwrap();
-                for i in 0..events.read {
-                    let event = unsafe { mem::transmute::<_, FileDeleteEvent>(*buffers[i]) };
-                    let json = serde_json::to_string(&event).unwrap();
-                    println!("{}", json);
+                match log.read(&mut buf).await {
+                    Ok(len) => {
+                        let msg = String::from_utf8_lossy(&buf[..len]);
+                        if let Some(json_str) = msg.strip_prefix("DIRT_JSON: ") {
+                            if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(json_str) {
+                                if let Some(path_str) = json.get("path").and_then(|p| p.as_str()) {
+                                    if let Ok(metadata) = std::fs::metadata(path_str) {
+                                        json["inode"] = serde_json::Value::from(metadata.ino());
+                                    }
+                                }
+                                if let Ok(pretty_json) = serde_json::to_string_pretty(&json) {
+                                    println!("{}", pretty_json);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Error reading from eBPF log: {}", e);
+                    }
                 }
             }
         });
+        tasks.push(task);
     }
 
-    info!("Waiting for Ctrl-C...");
+
     signal::ctrl_c().await?;
-    info!("Exiting...");
+    info!("Shutting down...");
+
+    for task in tasks {
+        task.abort();
+    }
 
     Ok(())
 }

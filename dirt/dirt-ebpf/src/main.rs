@@ -1,51 +1,8 @@
 #![no_std]
 #![no_main]
 
-use aya_ebpf::{
-    macros::{kprobe, kretprobe},
-    programs::{ProbeContext, RetProbeContext},
-    helpers::bpf_get_current_pid_tgid,
-    maps::{PerCpuArray, PerfMap},
-    bindings::vmlinux::d_inode,
-};
-use core::mem;
-use dirt_common::FileDeleteEvent;
-
-#[repr(C)]
-pub struct Dentry {
-    pub d_inode: *const d_inode,
-}
-
-#[repr(C)]
-pub struct Path {
-    pub dentry: *const Dentry,
-}
-
-#[map]
-static mut EVENTS: PerfMap<FileDeleteEvent> = PerfMap::with_max_entries(1024, 0);
-
-#[map]
-static mut INODE_MAP: PerCpuArray<u64> = PerCpuArray::with_max_entries(1, 0);
-
-#[kprobe]
-pub fn vfs_unlink_probe(ctx: ProbeContext) -> u32 {
-    match try_vfs_unlink(ctx) {
-        Ok(ret) => ret,
-        Err(ret) => ret,
-    }
-}
-
-fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
-    let path: *const Path = ctx.arg(1).ok_or(1u32)?;
-    let dentry = unsafe { (*path).dentry };
-    let inode = unsafe { (*dentry).d_inode };
-    let inode_num = unsafe { (*inode).i_ino };
-
-    let zero: u32 = 0;
-    INODE_MAP.set(&zero, &inode_num);
-
-    Ok(0)
-}
+use aya_ebpf::{macros::{kprobe, kretprobe}, programs::{ProbeContext, RetProbeContext}, helpers::bpf_printk};
+use aya_log_ebpf::info;
 
 #[kretprobe]
 pub fn dirt(ctx: RetProbeContext) -> u32 {
@@ -56,33 +13,64 @@ pub fn dirt(ctx: RetProbeContext) -> u32 {
 }
 
 fn try_dirt(ctx: RetProbeContext) -> Result<u32, u32> {
-    let zero: u32 = 0;
-    let inode_num = INODE_MAP.get(&zero).copied().unwrap_or(0);
-
-    let pid_tgid = bpf_get_current_pid_tgid();
-    let pid = pid_tgid as u32;
-    let tgid = (pid_tgid >> 32) as u32;
-    let ret = ctx.ret().unwrap_or(0) as i32;
-
-    let event = FileDeleteEvent {
-        inode: inode_num,
-        pid,
-        tgid,
-        ret,
+    // Get return value - handle the Option type
+    let ret_val = match ctx.ret() {
+        Some(val) => val,
+        None => 0, // Default to 0 if no return value
     };
 
+    // Get process information
+    let pid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
+    let tgid = (pid >> 32) as u32;
+    let current_pid = pid as u32;
+
+    // Log return information in JSON format
+    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_return\",\"pid\":{},\"tgid\":{},\"return\":{}}}", current_pid, tgid, ret_val);
+
     unsafe {
-        EVENTS.output(&ctx, &event, 0);
+        bpf_printk!(b"DIRT: vfs_unlink RETURN - {\"pid\": %d, \"tgid\": %d, \"return\": %d}", current_pid, tgid, ret_val);
+    }
+    Ok(0)
+}
+
+#[kprobe]
+pub fn vfs_unlink_probe(ctx: ProbeContext) -> u32 {
+    match try_vfs_unlink(ctx) {
+        Ok(ret) => ret,
+        Err(ret) => ret,
+    }
+}
+
+use aya_ebpf::helpers::bpf_probe_read_user_str_bytes;
+
+fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
+    // Get process information
+    let pid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
+    let tgid = (pid >> 32) as u32;
+    let current_pid = pid as u32;
+
+    // Get file path
+    let path_ptr: *const u8 = ctx.arg(1).ok_or(1u32)?;
+    let mut path_bytes = [0u8; 256];
+    let path_len = unsafe { bpf_probe_read_user_str_bytes(path_ptr, &mut path_bytes) }.map_err(|e| e as u32)?;
+    let path = String::from_utf8_lossy(&path_bytes[..path_len as usize]);
+
+    // Log entry information with process details in JSON format
+    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_entry\",\"pid\":{},\"tgid\":{},\"path\":\"{}\"}}", current_pid, tgid, path);
+
+    unsafe {
+        bpf_printk!(b"DIRT: vfs_unlink ENTRY - {\"pid\": %d, \"tgid\": %d, \"path\": \"%s\"}", current_pid, tgid, path.as_ptr());
     }
 
     Ok(0)
 }
 
+#[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-#[no_mangle]
-#[link_section = "license"]
-pub static LICENSE: [u8; 13] = *b"Dual MIT/GPL\0";
+#[unsafe(link_section = "license")]
+#[unsafe(no_mangle)]
+static LICENSE: [u8; 13] = *b"Dual MIT/GPL\0";
