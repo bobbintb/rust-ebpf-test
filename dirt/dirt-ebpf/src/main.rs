@@ -53,13 +53,12 @@ fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
     let path_ptr: *const u8 = ctx.arg(1).ok_or(1u32)?;
     let mut path_bytes = [0u8; 256];
     let path_len = unsafe { bpf_probe_read_user_str_bytes(path_ptr, &mut path_bytes) }.map_err(|e| e as u32)?;
-    let path = String::from_utf8_lossy(&path_bytes[..path_len as usize]);
 
     // Log entry information with process details in JSON format
-    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_entry\",\"pid\":{},\"tgid\":{},\"path\":\"{}\"}}", current_pid, tgid, path);
+    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_entry\",\"pid\":{},\"tgid\":{},\"path_bytes\":{:?}}}", current_pid, tgid, &path_bytes[..path_len as usize]);
 
     unsafe {
-        bpf_printk!(b"DIRT: vfs_unlink ENTRY - {\"pid\": %d, \"tgid\": %d, \"path\": \"%s\"}", current_pid, tgid, path.as_ptr());
+        bpf_printk!(b"DIRT: vfs_unlink ENTRY - {\"pid\": %d, \"tgid\": %d}", current_pid, tgid);
     }
 
     Ok(0)

@@ -65,11 +65,16 @@ async fn main() -> anyhow::Result<()> {
                         let msg = String::from_utf8_lossy(&buf[..len]);
                         if let Some(json_str) = msg.strip_prefix("DIRT_JSON: ") {
                             if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(json_str) {
-                                if let Some(path_str) = json.get("path").and_then(|p| p.as_str()) {
-                                    if let Ok(metadata) = std::fs::metadata(path_str) {
-                                        json["inode"] = serde_json::Value::from(metadata.ino());
+                                if let Some(path_bytes) = json.get("path_bytes").and_then(|p| p.as_array()) {
+                                    let path_bytes: Vec<u8> = path_bytes.iter().map(|v| v.as_u64().unwrap_or(0) as u8).collect();
+                                    if let Ok(path_str) = String::from_utf8(path_bytes) {
+                                        if let Ok(metadata) = std::fs::metadata(&path_str) {
+                                            json["inode"] = serde_json::Value::from(metadata.ino());
+                                        }
+                                        json["path"] = serde_json::Value::from(path_str);
                                     }
                                 }
+                                json.remove("path_bytes");
                                 if let Ok(pretty_json) = serde_json::to_string_pretty(&json) {
                                     println!("{}", pretty_json);
                                 }
