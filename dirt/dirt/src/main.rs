@@ -6,7 +6,7 @@ use aya::{
     Bpf,
 };
 use bytes::BytesMut;
-use dirt_common::UnlinkEvent;
+use dirt_common::FileDeleteEvent;
 use std::mem;
 use tokio::{signal, task};
 use log::{info, warn};
@@ -55,30 +55,21 @@ async fn main() -> anyhow::Result<()> {
     program.attach("vfs_unlink", 0)?;
 
     let mut events =
-        AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS")?)?;
+        aya::maps::RingBuf::try_from(bpf.map_mut("EVENTS")?)?;
 
-    for cpu_id in online_cpus()? {
-        let mut buf = events.open(cpu_id, None)?;
-
-        task::spawn(async move {
-            let mut buffers = (0..10)
-                .map(|_| BytesMut::with_capacity(mem::size_of::<UnlinkEvent>()))
-                .collect::<Vec<_>>();
-
-            loop {
-                let events = buf.read_events(&mut buffers).await.unwrap();
-                for i in 0..events.read {
-                    let buf = &mut buffers[i];
-                    let ptr = buf.as_ptr() as *const UnlinkEvent;
-                    let event = unsafe { ptr.read_unaligned() };
-                    println!(
-                        "{{\"pid\":{},\"tgid\":{},\"inode\":{}}}",
-                        event.pid, event.tgid, event.inode
-                    );
-                }
-            }
-        });
-    }
+    task::spawn(async move {
+        loop {
+            let mut buf = [0u8; mem::size_of::<FileDeleteEvent>()];
+            events.read(&mut buf).await.unwrap();
+            let event = unsafe { &*(buf.as_ptr() as *const FileDeleteEvent) };
+            let filename = String::from_utf8_lossy(&event.filename);
+            let comm = String::from_utf8_lossy(&event.comm);
+            println!(
+                "{{\"pid\":{},\"uid\":{},\"filename\":\"{}\",\"comm\":\"{}\"}}",
+                event.pid, event.uid, filename.trim_end_matches(char::from(0)), comm.trim_end_matches(char::from(0))
+            );
+        }
+    });
 
     info!("Waiting for Ctrl-C...");
     signal::ctrl_c().await.expect("failed to listen for event");

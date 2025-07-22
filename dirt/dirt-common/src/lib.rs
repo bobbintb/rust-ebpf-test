@@ -1,13 +1,13 @@
 #![no_std]
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct UnlinkEvent {
-    pub tgid: u32,
+#[derive(Debug, Clone, Copy)]
+pub struct FileDeleteEvent {
     pub pid: u32,
-    pub inode: u64,
+    pub uid: u32,
+    pub filename: [u8; 256],
+    pub comm: [u8; 16],
 }
 
-// Ensure the event structure is aligned to a 4-byte boundary
 #[cfg(feature = "user")]
-unsafe impl aya::Pod for UnlinkEvent {}
+unsafe impl aya::Pod for FileDeleteEvent {}
