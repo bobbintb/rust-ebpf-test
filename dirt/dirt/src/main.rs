@@ -56,15 +56,7 @@ async fn main() -> anyhow::Result<()> {
     dirt_program.attach("vfs_unlink", 0)?;
     info!("DIRT: kretprobe 'dirt' attached successfully to vfs_unlink");
     
-    // Attach the new kprobe for vfs_unlink
-    info!("DIRT: Loading and attaching kprobe 'vfs_unlink_probe'...");
-    let vfs_unlink_program: &mut KProbe = ebpf.program_mut("vfs_unlink_probe").unwrap().try_into()?;
-    vfs_unlink_program.load()?;
-    vfs_unlink_program.attach("vfs_unlink", 0)?;
-    info!("DIRT: kprobe 'vfs_unlink_probe' attached successfully to vfs_unlink");
-
     info!("DIRT: === Monitoring Active ===");
-    info!("DIRT: Both probes are now active and monitoring file deletions");
     info!("DIRT: Each deletion will show structured JSON output with event type, timestamp, process info, and return values");
     info!("DIRT: Try deleting a file to see detailed output!");
     info!("DIRT: Example: 'touch /tmp/test && rm /tmp/test' in another terminal");
