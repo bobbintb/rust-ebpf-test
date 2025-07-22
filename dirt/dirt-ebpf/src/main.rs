@@ -4,6 +4,14 @@
 use aya_ebpf::{macros::{kprobe, kretprobe}, programs::{ProbeContext, RetProbeContext}, helpers::bpf_printk};
 use aya_log_ebpf::info;
 
+#[allow(non_upper_case_globals)]
+#[allow(non_snake_case)]
+#[allow(non_camel_case_types)]
+#[allow(dead_code)]
+mod vmlinux;
+
+use vmlinux::{dentry, inode};
+
 #[kretprobe]
 pub fn dirt(ctx: RetProbeContext) -> u32 {
     match try_dirt(ctx) {
@@ -46,14 +54,21 @@ fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
     let pid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
     let tgid = (pid >> 32) as u32;
     let current_pid = pid as u32;
-    
-    // Log entry information with process details in JSON format
-    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_entry\",\"pid\":{},\"tgid\":{}}}", current_pid, tgid);
-    
+
+    // Attempt to get the dentry and inode
+    let dentry_ptr: *const dentry = unsafe { ctx.arg(1).ok_or(1u32)? };
+    let dentry: dentry = unsafe { core::ptr::read(dentry_ptr) };
+    let inode_ptr: *const inode = dentry.d_inode;
+    let inode: inode = unsafe { core::ptr::read(inode_ptr) };
+    let i_ino = inode.i_ino;
+
+    // Log entry information with process details and inode in JSON format
+    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_entry\",\"pid\":{},\"tgid\":{},\"inode\":{}}}", current_pid, tgid, i_ino);
+
     unsafe {
-        bpf_printk!(b"DIRT: vfs_unlink ENTRY - {\"pid\": %d, \"tgid\": %d}", current_pid, tgid);
+        bpf_printk!(b"DIRT: vfs_unlink ENTRY - {\"pid\": %d, \"tgid\": %d, \"inode\": %lu}", current_pid, tgid, i_ino);
     }
-    
+
     Ok(0)
 }
 
