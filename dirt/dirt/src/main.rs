@@ -2,6 +2,7 @@ use aya::programs::KProbe;
 use log::{info, warn, debug};
 use tokio::signal;
 use aya_log::EbpfLogger;
+use futures::StreamExt;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -27,9 +28,7 @@ async fn main() -> anyhow::Result<()> {
         "/dirt"
     )))?;
 
-    if let Err(e) = EbpfLogger::init(&mut bpf) {
-        warn!("Failed to initialize eBPF logger: {}", e);
-    }
+    let mut logger = EbpfLogger::init(&mut bpf)?;
 
     let dirt_program: &mut KProbe = bpf.program_mut("dirt").unwrap().try_into()?;
     dirt_program.load()?;
@@ -41,10 +40,9 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Monitoring file deletions...");
 
-    let mut logs = EbpfLogger::logs(&bpf)?;
     let mut tasks = Vec::new();
-    for i in 0..logs.len() {
-        let log = logs.remove(0);
+    for i in 0..logger.len() {
+        let log = logger.next().await.unwrap();
         let task = tokio::spawn(async move {
             let mut buf = [0u8; 1024];
             loop {
