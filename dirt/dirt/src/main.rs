@@ -1,22 +1,18 @@
-use aya::programs::KProbe;
-#[rustfmt::skip]
-use log::{debug, info, warn};
+use aya::{
+    include_bytes_aligned,
+    maps::RingBuf,
+    programs::{KProbe, KRetProbe},
+    Bpf,
+};
+use bytes::Bytes;
+use dirt_common::RecordFs;
+use log::{info, warn};
 use tokio::signal;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Set default log level to Info if RUST_LOG is not set
     let env = env_logger::Env::default().default_filter_or("info");
-    env_logger::Builder::from_env(env)
-        .filter_level(log::LevelFilter::Info)
-        .format_timestamp_millis()
-        .format_module_path(false)
-        .format_target(false)
-        .init();
-
-    info!("=== DIRT eBPF File Deletion Monitor Starting ===");
-    info!("Monitoring file deletions via vfs_unlink system calls");
-    info!("You'll see detailed process information for each deletion");
+    env_logger::init_from_env(env);
 
     // Bump the memlock rlimit. This is needed for older kernels that don't use the
     // new memcg based accounting, see https://lwn.net/Articles/837122/
@@ -26,54 +22,55 @@ async fn main() -> anyhow::Result<()> {
     };
     let ret = unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &rlim) };
     if ret != 0 {
-        debug!("DIRT: Failed to remove limit on locked memory, ret: {ret}");
-    } else {
-        debug!("DIRT: Successfully set memlock limit to infinity");
+        warn!("Failed to increase rlimit, eBPF loading may fail. Try running as root.");
     }
 
-    // This will include your eBPF object file as raw bytes at compile-time and load it at
-    // runtime. This approach is recommended for most real-world use cases. If you would
-    // like to specify the eBPF program at runtime rather than at compile-time, you can
-    // reach for `Bpf::load_file` instead.
-    info!("DIRT: Loading eBPF program...");
-    let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
-        env!("OUT_DIR"),
-        "/dirt"
-    )))?;
-    
-    info!("DIRT: Initializing eBPF logger...");
-    if let Err(e) = aya_log::EbpfLogger::init(&mut ebpf) {
+    let mut bpf = Bpf::load(include_bytes_aligned!(
+        "../../target/bpfel-unknown-none/debug/dirt"
+    ))?;
+    if let Err(e) = aya_log::EbpfLogger::init(&mut bpf) {
         // This can happen if you remove all log statements from your eBPF program.
-        warn!("DIRT: Failed to initialize eBPF logger: {e}");
-    } else {
-        info!("DIRT: eBPF logger initialized successfully");
+        warn!("Failed to initialize eBPF logger: {}", e);
     }
-    
-    // Attach the existing kretprobe
-    info!("DIRT: Loading and attaching kretprobe 'dirt'...");
-    let dirt_program: &mut KProbe = ebpf.program_mut("dirt").unwrap().try_into()?;
-    dirt_program.load()?;
-    dirt_program.attach("vfs_unlink", 0)?;
-    info!("DIRT: kretprobe 'dirt' attached successfully to vfs_unlink");
-    
-    // Attach the new kprobe for vfs_unlink
-    info!("DIRT: Loading and attaching kprobe 'vfs_unlink_probe'...");
-    let vfs_unlink_program: &mut KProbe = ebpf.program_mut("vfs_unlink_probe").unwrap().try_into()?;
-    vfs_unlink_program.load()?;
-    vfs_unlink_program.attach("vfs_unlink", 0)?;
-    info!("DIRT: kprobe 'vfs_unlink_probe' attached successfully to vfs_unlink");
 
-    info!("DIRT: === Monitoring Active ===");
-    info!("DIRT: Both probes are now active and monitoring file deletions");
-    info!("DIRT: Each deletion will show structured JSON output with event type, timestamp, process info, and return values");
-    info!("DIRT: Try deleting a file to see detailed output!");
-    info!("DIRT: Example: 'touch /tmp/test && rm /tmp/test' in another terminal");
-    info!("DIRT: You can use 'ps -p <PID>' to see which process is deleting files");
-    
-    let ctrl_c = signal::ctrl_c();
-    println!("DIRT: Waiting for Ctrl-C to stop monitoring...");
-    ctrl_c.await?;
-    println!("DIRT: Shutting down file deletion monitor...");
+    let do_filp_open: &mut KRetProbe = bpf.program_mut("do_filp_open").unwrap().try_into()?;
+    do_filp_open.load()?;
+    do_filp_open.attach("do_filp_open", 0)?;
+
+    let security_inode_unlink: &mut KProbe = bpf
+        .program_mut("security_inode_unlink")
+        .unwrap()
+        .try_into()?;
+    security_inode_unlink.load()?;
+    security_inode_unlink.attach("security_inode_unlink", 0)?;
+
+    let security_inode_rename: &mut KProbe = bpf
+        .program_mut("security_inode_rename")
+        .unwrap()
+        .try_into()?;
+    security_inode_rename.load()?;
+    security_inode_rename.attach("security_inode_rename", 0)?;
+
+    let vfs_close: &mut KProbe = bpf.program_mut("vfs_close").unwrap().try_into()?;
+    vfs_close.load()?;
+    vfs_close.attach("vfs_close", 0)?;
+
+    let mut ringbuf = RingBuf::from(bpf.map_mut("RINGBUF_RECORDS")?)?;
+
+    info!("Waiting for events...");
+
+    loop {
+        tokio::select! {
+            _ = signal::ctrl_c() => {
+                break;
+            }
+            Some(event) = ringbuf.next() => {
+                let mut buf = Bytes::copy_from_slice(&event);
+                let record: RecordFs = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const RecordFs) };
+                info!("Received event: {:?}", record.filename);
+            }
+        }
+    }
 
     Ok(())
 }
