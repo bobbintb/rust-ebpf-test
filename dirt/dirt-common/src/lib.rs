@@ -1,7 +1,7 @@
 #![no_std]
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct UnlinkEvent {
     pub inode: u64,
     pub pid: u32,

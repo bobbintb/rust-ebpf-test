@@ -1,13 +1,15 @@
 #![no_std]
 #![no_main]
 
-use aya_ebpf::{macros::{kprobe, kretprobe}, programs::{ProbeContext, RetProbeContext}, helpers::bpf_printk, macros::map, maps::HashMap};
-use aya_log_ebpf::info;
+mod vmlinux;
 
+use aya_ebpf::{macros::{kprobe, kretprobe, map}, programs::{ProbeContext, RetProbeContext}, helpers::{bpf_get_current_pid_tgid, bpf_probe_read_kernel}, maps::HashMap};
+use aya_log_ebpf::info;
 use dirt_common::UnlinkEvent;
+use vmlinux::dentry;
 
 #[map]
-static mut DENTRY_MAP: HashMap<u32, u64> = HashMap::<u32, u64>::with_max_entries(1024, 0);
+static mut UNLINK_EVENTS: HashMap<u32, UnlinkEvent> = HashMap::with_max_entries(1024, 0);
 
 #[kretprobe]
 pub fn dirt(ctx: RetProbeContext) -> u32 {
@@ -17,36 +19,20 @@ pub fn dirt(ctx: RetProbeContext) -> u32 {
     }
 }
 
-use crate::vmlinux::dentry;
-use crate::vmlinux::inode;
-
 fn try_dirt(ctx: RetProbeContext) -> Result<u32, u32> {
-    let ret_val = match ctx.ret() {
-        Some(val) => val as i32,
-        None => 0,
-    };
+    let ret_val = ctx.ret().unwrap_or(0) as i32;
+    let pid = bpf_get_current_pid_tgid();
+    let tgid = (pid >> 32) as u32;
+    let current_pid = pid as u32;
 
-    let pid_tgid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
-    let tgid = (pid_tgid >> 32) as u32;
-    let pid = pid_tgid as u32;
-
-    let dentry_ptr = unsafe { DENTRY_MAP.get(&pid) };
-    if dentry_ptr.is_none() {
-        return Ok(0);
+    if let Some(event) = unsafe { UNLINK_EVENTS.get_mut(&current_pid) } {
+        event.ret_val = ret_val;
+        info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_return\",\"pid\":{},\"tgid\":{},\"inode\":{},\"return\":{}}}", event.pid, event.tgid, event.inode, event.ret_val);
     }
-    let dentry_ptr = dentry_ptr.unwrap();
 
-    let dentry: dentry = unsafe { core::ptr::read_volatile(dentry_ptr as *const dentry) };
-    let inode: inode = unsafe { core::ptr::read_volatile(dentry.d_inode as *const inode) };
-
-    let event = UnlinkEvent {
-        inode: inode.i_ino,
-        pid,
-        tgid,
-        ret_val,
-    };
-
-    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_return\",\"pid\":{},\"tgid\":{},\"inode\":{},\"return\":{}}}", event.pid, event.tgid, event.inode, event.ret_val);
+    unsafe {
+        UNLINK_EVENTS.remove(&current_pid).unwrap();
+    }
 
     Ok(0)
 }
@@ -60,11 +46,27 @@ pub fn vfs_unlink_probe(ctx: ProbeContext) -> u32 {
 }
 
 fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
-    let pid = aya_ebpf::helpers::bpf_get_current_pid_tgid() as u32;
-    let dentry: u64 = ctx.arg(1).ok_or(1u32)?;
+    let pid = bpf_get_current_pid_tgid();
+    let tgid = (pid >> 32) as u32;
+    let current_pid = pid as u32;
+
+    let dentry: *const dentry = unsafe { ctx.arg(1).unwrap() };
+    let inode = unsafe { bpf_probe_read_kernel(&(*dentry).d_inode).unwrap() };
+    let inode_no = unsafe { bpf_probe_read_kernel(&inode.i_ino).unwrap() };
+
+    let event = UnlinkEvent {
+        inode: inode_no,
+        pid: current_pid,
+        tgid,
+        ret_val: 0,
+    };
+
     unsafe {
-        DENTRY_MAP.insert(&pid, &dentry, 0).map_err(|e| e as u32)?;
+        UNLINK_EVENTS.insert(&current_pid, &event).unwrap();
     }
+
+    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_entry\",\"pid\":{},\"tgid\":{},\"inode\":{}}}", current_pid, tgid, inode_no);
+
     Ok(0)
 }
 
@@ -74,6 +76,6 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-#[unsafe(link_section = "license")]
-#[unsafe(no_mangle)]
-static LICENSE: [u8; 13] = *b"Dual MIT/GPL\0";
+#[no_mangle]
+#[link_section = "license"]
+pub static LICENSE: [u8; 13] = *b"Dual MIT/GPL\0";
