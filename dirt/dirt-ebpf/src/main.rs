@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+mod vmlinux;
+
 use aya_ebpf::{macros::{kprobe, kretprobe}, programs::{ProbeContext, RetProbeContext}, helpers::bpf_printk};
 use aya_log_ebpf::info;
 
