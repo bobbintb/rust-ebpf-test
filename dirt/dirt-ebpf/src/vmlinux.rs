@@ -41981,14 +41981,6 @@ pub struct page_pool {
     pub _bitfield_align_5: [u8; 0],
     pub _bitfield_5: __BindgenBitfieldUnit<[u8; 40usize]>,
 }
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct unlinkat_args {
-    pub dfd: ::aya_ebpf::cty::c_int,
-    pub pathname: *const ::aya_ebpf::cty::c_char,
-    pub flags: ::aya_ebpf::cty::c_int,
-}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct page_pool__bindgen_ty_1 {}

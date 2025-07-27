@@ -2,13 +2,12 @@
 #![no_main]
 
 mod vmlinux;
-// Commenting this out for now until it is done so it won't cause errors.
-// mod types;
+mod types;
 
 use aya_ebpf::{macros::{fentry, fexit}, programs::FExitContext, helpers::bpf_printk};
 use aya_log_ebpf::info;
 
-use crate::vmlinux::unlinkat_args;
+use crate::types::unlinkat_args;
 
 #[fexit]
 pub fn vfs_unlink_exit(ctx: FExitContext) -> u32 {
