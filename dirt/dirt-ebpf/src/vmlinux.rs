@@ -159,11 +159,11 @@ impl<T> __IncompleteArrayField<T> {
     }
     #[inline]
     pub unsafe fn as_slice(&self, len: usize) -> &[T] {
-        ::core::slice::from_raw_parts(self.as_ptr(), len)
+        unsafe { ::core::slice::from_raw_parts(self.as_ptr(), len) }
     }
     #[inline]
     pub unsafe fn as_mut_slice(&mut self, len: usize) -> &mut [T] {
-        ::core::slice::from_raw_parts_mut(self.as_mut_ptr(), len)
+        unsafe { ::core::slice::from_raw_parts_mut(self.as_mut_ptr(), len) }
     }
 }
 impl<T> ::core::fmt::Debug for __IncompleteArrayField<T> {
@@ -180,11 +180,11 @@ impl<T> __BindgenUnionField<T> {
     }
     #[inline]
     pub unsafe fn as_ref(&self) -> &T {
-        ::core::mem::transmute(self)
+        unsafe { ::core::mem::transmute(self) }
     }
     #[inline]
     pub unsafe fn as_mut(&mut self) -> &mut T {
-        ::core::mem::transmute(self)
+        unsafe { ::core::mem::transmute(self) }
     }
 }
 impl<T> ::core::default::Default for __BindgenUnionField<T> {
@@ -208,6 +208,7 @@ impl<T> ::core::fmt::Debug for __BindgenUnionField<T> {
 impl<T> ::core::hash::Hash for __BindgenUnionField<T> {
     fn hash<H: ::core::hash::Hasher>(&self, _state: &mut H) {}
 }
+
 impl<T> ::core::cmp::PartialEq for __BindgenUnionField<T> {
     fn eq(&self, _other: &__BindgenUnionField<T>) -> bool {
         true
