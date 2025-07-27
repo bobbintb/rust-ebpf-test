@@ -1,0 +1,57 @@
+# Project Agents.md Guide for AI agents
+
+This Agents.md file provides comprehensive guidance for AI agents working with this codebase.
+
+## Project Structure 
+
+- `dirt`: Project root
+  - `/dirt`: Rust eBPF user-space code
+    - `/src`: Rust eBPF user-space source code
+	  - `/main.rs`: Main Rust eBPF user-space code
+	- `/build.rs`: Build file for user-space code
+	- `/Cargo.toml`: Rust dependencies for eBPF user-space code
+  - `/dirt-common`: Rust eBPF code shared between the kernel-space and user-space code
+    - `/src`: Rust eBPF source code shared between the kernel-space and user-space
+	  - `/lib.rs`: Library target source code shared between the kernel-space and user-space
+	- `/build.rs`: Build file for code shared between the kernel-space and user-space
+	- `/Cargo.toml`: Rust dependencies for eBPF code shared between the kernel-space and user-space
+  - `/dirt-ebpf`: Rust eBPF kernel-space code
+    - `/src`: Rust eBPF kernel-space source code
+	  - `/lib.rs`: Library target source code for kernel-space
+	  - `/main.rs`: Main Rust eBPF kernel-space code
+	  - `/types.rs`: Rust eBPF structs for kernel-space code
+	  - `/vmlinux.rs`: Rust eBPF kernel bindings
+	- `/build.rs`: Build file for kernel-space code
+	- `/Cargo.toml`: Rust dependencies for eBPF kernel-space code
+- `old_dirt`: Legacy C code used for reference
+  - `/dirt.bpf.c`: Legacy C eBPF kernel-space code
+  - `/dirt.c`: Legacy C eBPF user-space code
+  - `/dirt.h`: Legacy C eBPF headers
+
+## Buildng and testing
+
+The following script will set up the build envrionment on Ubuntu:
+
+```bash
+rm -dr /home/jules/.rustup/
+sudo apt update -y
+sudo apt remove rustc -y
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+. "$HOME/.cargo/env"
+rustup install stable
+rustup toolchain install nightly --component rust-src
+cargo install bpf-linker
+cargo install cargo-generate
+sudo apt install build-essential llvm-14 clang-14 libclang-14-dev cmake libssl-dev pkg-config python3 git -y
+wget $(curl -s https://archive.ubuntu.com/ubuntu/pool/main/l/linux/ | grep -oP 'bpftool_[^"]+_amd64.deb' | sort -V | tail -1 | awk '{print "https://archive.ubuntu.com/ubuntu/pool/main/l/linux/" $1}')
+sudo apt install ./bpftool* -y
+```
+
+The build environment has been thoroughly tested and is correct for this project. The agent should not make any changes to the build environment after running the build script. If the agent thinks there is an issue with the environment, the agent is wrong and should not under any circumstances make any changes to the environment but ask for guidance instead.
+Agents should use the following command to build the project:
+
+```bash
+cargo +nightly build
+```
+
+Because this is an eBPF CO-RE program and eBPF and BTF must be enabled in the kernel, agents may not be able to run and test the program once it has been built. After completing an assigned task, agents should build the project from the project root folder using the build command previously specified. If the build fails, agents should attempt to address build errors and retry building until the project builds successfully.
