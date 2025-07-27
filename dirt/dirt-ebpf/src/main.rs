@@ -5,23 +5,22 @@ mod vmlinux;
 // Commenting this out for now until it is done so it won't cause errors.
 // mod types;
 
-use aya_ebpf::{macros::{kprobe, kretprobe}, programs::{ProbeContext, RetProbeContext}, helpers::bpf_printk};
+use aya_ebpf::{macros::{fentry, fexit}, programs::FExitContext, helpers::bpf_printk};
 use aya_log_ebpf::info;
 
-#[kretprobe]
-pub fn dirt(ctx: RetProbeContext) -> u32 {
-    match try_dirt(ctx) {
+use crate::vmlinux::unlinkat_args;
+
+#[fexit]
+pub fn vfs_unlink_exit(ctx: FExitContext) -> u32 {
+    match try_vfs_unlink_exit(ctx) {
         Ok(ret) => ret,
         Err(ret) => ret,
     }
 }
 
-fn try_dirt(ctx: RetProbeContext) -> Result<u32, u32> {
-    // Get return value - handle the Option type
-    let ret_val = match ctx.ret() {
-        Some(val) => val,
-        None => 0, // Default to 0 if no return value
-    };
+fn try_vfs_unlink_exit(ctx: FExitContext) -> Result<u32, u32> {
+    // Get return value - fexit context does not have a return value so we set to 0.
+    let ret_val = 0;
     
     // Get process information
     let pid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
@@ -37,15 +36,17 @@ fn try_dirt(ctx: RetProbeContext) -> Result<u32, u32> {
     Ok(0)
 }
 
-#[kprobe]
-pub fn vfs_unlink_probe(ctx: ProbeContext) -> u32 {
-    match try_vfs_unlink(ctx) {
+use aya_ebpf::programs::FEntryContext;
+
+#[fentry]
+pub fn vfs_unlink_entry(ctx: FEntryContext) -> u32 {
+    match try_vfs_unlink_entry(ctx) {
         Ok(ret) => ret,
         Err(ret) => ret,
     }
 }
 
-fn try_vfs_unlink(ctx: ProbeContext) -> Result<u32, u32> {
+fn try_vfs_unlink_entry(ctx: FEntryContext) -> Result<u32, u32> {
     // Get process information
     let pid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
     let tgid = (pid >> 32) as u32;
