@@ -4,7 +4,7 @@ This Agents.md file provides comprehensive guidance for AI agents working with t
 
 ## Project Structure 
 
-- `dirt`: Project root
+- `dirt`: The project root folder where the build command should be ran
   - `/dirt`: Rust eBPF user-space code
     - `/src`: Rust eBPF user-space source code
 	  - `/main.rs`: Main Rust eBPF user-space code
@@ -28,7 +28,7 @@ This Agents.md file provides comprehensive guidance for AI agents working with t
   - `/dirt.c`: Legacy C eBPF user-space code
   - `/dirt.h`: Legacy C eBPF headers
 
-## Buildng and testing
+## Environment setup
 
 The following script will set up the build envrionment on Ubuntu:
 
@@ -45,11 +45,12 @@ cargo install cargo-generate
 sudo apt install build-essential llvm-14 clang-14 libclang-14-dev cmake libssl-dev pkg-config python3 git -y
 wget $(curl -s https://archive.ubuntu.com/ubuntu/pool/main/l/linux/ | grep -oP 'bpftool_[^"]+_amd64.deb' | sort -V | tail -1 | awk '{print "https://archive.ubuntu.com/ubuntu/pool/main/l/linux/" $1}')
 sudo apt install ./bpftool* -y
-rm *.deb
 ```
 
+## Buildng and testing
+
 The build environment has been thoroughly tested and is correct for this project. The agent should not make any changes to the build environment after running the build script. If the agent thinks there is an issue with the environment, the agent is wrong and should not under any circumstances make any changes to the environment but ask for guidance instead.
-Agents should use the following command to build the project:
+Agents should only try and build from the root project folder and not the individual program folders. Agents should use the following command to build the project:
 
 ```bash
 cargo +nightly build
