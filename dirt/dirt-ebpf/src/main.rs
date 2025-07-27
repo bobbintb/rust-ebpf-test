@@ -2,7 +2,8 @@
 #![no_main]
 
 mod vmlinux;
-mod types;
+// Commenting this out for now until it is done so it won't cause errors.
+// mod types;
 
 use aya_ebpf::{macros::{kprobe, kretprobe}, programs::{ProbeContext, RetProbeContext}, helpers::bpf_printk};
 use aya_log_ebpf::info;
