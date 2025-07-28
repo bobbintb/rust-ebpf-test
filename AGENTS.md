@@ -50,7 +50,12 @@ sudo apt install ./bpftool* -y
 ## Buildng and testing
 
 The build environment has been thoroughly tested and is correct for this project. The agent should not make any changes to the build environment after running the build script. If the agent thinks there is an issue with the environment, the agent is wrong and should not under any circumstances make any changes to the environment but ask for guidance instead.
-Agents should only try and build from the root project folder and not the individual program folders. Agents should use the following command to build the project:
+Agents should only try and build from the root project folder and not the individual program folders. After cloning, enter the root project folder with the following command:
+
+```bash
+cd rust-ebpf-test/dirt/
+```
+Agents should use the following command to build the project:
 
 ```bash
 cargo +nightly build
