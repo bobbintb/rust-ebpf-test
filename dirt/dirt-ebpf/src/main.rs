@@ -17,23 +17,25 @@ pub fn vfs_unlink_exit(ctx: RetProbeContext) -> u32 {
 }
 
 fn try_vfs_unlink_exit(ctx: RetProbeContext) -> Result<u32, u32> {
-    // Get return value - handle the Option type
-    let ret_val = match ctx.ret() {
+    let ret_val: i32 = match ctx.ret::<i32>() {
         Some(val) => val,
-        None => 0, // Default to 0 if no return value
+        None => return Ok(0),
     };
-    
-    // Get process information
+
+    if ret_val < 0 {
+        return Ok(0);
+    }
+
     let pid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
     let tgid = (pid >> 32) as u32;
     let current_pid = pid as u32;
-    
-    // Log return information in JSON format
+
     info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlink_return\",\"pid\":{},\"tgid\":{},\"return\":{}}}", current_pid, tgid, ret_val);
-    
+
     unsafe {
         bpf_printk!(b"DIRT: vfs_unlink RETURN - {\"pid\": %d, \"tgid\": %d, \"return\": %d}", current_pid, tgid, ret_val);
     }
+
     Ok(0)
 }
 
