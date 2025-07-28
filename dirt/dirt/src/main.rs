@@ -1,4 +1,4 @@
-use aya::programs::KProbe;
+use aya::programs::{FEntry, KProbe};
 #[rustfmt::skip]
 use log::{debug, info, warn};
 use tokio::signal;
@@ -50,18 +50,19 @@ async fn main() -> anyhow::Result<()> {
     }
     
     // Attach the existing kretprobe
-    info!("DIRT: Loading and attaching kretprobe 'dirt'...");
-    let dirt_program: &mut KProbe = ebpf.program_mut("dirt").unwrap().try_into()?;
+    info!("DIRT: Loading and attaching kretprobe 'vfs_unlink_exit'...");
+    let dirt_program: &mut KProbe = ebpf.program_mut("vfs_unlink_exit").unwrap().try_into()?;
     dirt_program.load()?;
     dirt_program.attach("vfs_unlink", 0)?;
-    info!("DIRT: kretprobe 'dirt' attached successfully to vfs_unlink");
+    info!("DIRT: kretprobe 'vfs_unlink_exit' attached successfully to vfs_unlink");
     
-    // Attach the new kprobe for vfs_unlink
-    info!("DIRT: Loading and attaching kprobe 'vfs_unlink_probe'...");
-    let vfs_unlink_program: &mut KProbe = ebpf.program_mut("vfs_unlink_probe").unwrap().try_into()?;
-    vfs_unlink_program.load()?;
-    vfs_unlink_program.attach("vfs_unlink", 0)?;
-    info!("DIRT: kprobe 'vfs_unlink_probe' attached successfully to vfs_unlink");
+    // Attach the new fentry for vfs_unlink
+    info!("DIRT: Loading and attaching fentry 'vfs_unlink_entry'...");
+    let btf = aya::Btf::from_sys_fs()?;
+    let vfs_unlink_program: &mut FEntry = ebpf.program_mut("vfs_unlink_entry").unwrap().try_into()?;
+    vfs_unlink_program.load("vfs_unlink", &btf)?;
+    vfs_unlink_program.attach()?;
+    info!("DIRT: fentry 'vfs_unlink_entry' attached successfully to vfs_unlink");
 
     info!("DIRT: === Monitoring Active ===");
     info!("DIRT: Both probes are now active and monitoring file deletions");
