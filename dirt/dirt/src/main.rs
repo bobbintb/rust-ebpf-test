@@ -1,4 +1,5 @@
-use aya::programs::KProbe;
+use aya::programs::{FEntry, FExit};
+use aya::Btf;
 #[rustfmt::skip]
 use log::{debug, info, warn};
 use tokio::signal;
@@ -15,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     info!("=== DIRT eBPF File Deletion Monitor Starting ===");
-    info!("Monitoring file deletions via vfs_unlink system calls");
+    info!("Monitoring file deletions via do_unlinkat system calls");
     info!("You'll see detailed process information for each deletion");
 
     // Bump the memlock rlimit. This is needed for older kernels that don't use the
@@ -49,19 +50,20 @@ async fn main() -> anyhow::Result<()> {
         info!("DIRT: eBPF logger initialized successfully");
     }
     
-    // Attach the existing kretprobe
-    info!("DIRT: Loading and attaching kretprobe 'dirt'...");
-    let dirt_program: &mut KProbe = ebpf.program_mut("dirt").unwrap().try_into()?;
-    dirt_program.load()?;
-    dirt_program.attach("vfs_unlink", 0)?;
-    info!("DIRT: kretprobe 'dirt' attached successfully to vfs_unlink");
+    let btf = Btf::from_sys_fs()?;
+    // Attach the fexit probe
+    info!("DIRT: Loading and attaching fexit 'do_unlinkat_exit'...");
+    let do_unlinkat_exit_program: &mut FExit = ebpf.program_mut("do_unlinkat_exit").unwrap().try_into()?;
+    do_unlinkat_exit_program.load("do_unlinkat", &btf)?;
+    do_unlinkat_exit_program.attach()?;
+    info!("DIRT: fexit 'do_unlinkat_exit' attached successfully to do_unlinkat");
     
-    // Attach the new kprobe for vfs_unlink
-    info!("DIRT: Loading and attaching kprobe 'vfs_unlink_probe'...");
-    let vfs_unlink_program: &mut KProbe = ebpf.program_mut("vfs_unlink_probe").unwrap().try_into()?;
-    vfs_unlink_program.load()?;
-    vfs_unlink_program.attach("vfs_unlink", 0)?;
-    info!("DIRT: kprobe 'vfs_unlink_probe' attached successfully to vfs_unlink");
+    // Attach the fentry probe
+    info!("DIRT: Loading and attaching fentry 'do_unlinkat_entry'...");
+    let do_unlinkat_entry_program: &mut FEntry = ebpf.program_mut("do_unlinkat_entry").unwrap().try_into()?;
+    do_unlinkat_entry_program.load("do_unlinkat", &btf)?;
+    do_unlinkat_entry_program.attach()?;
+    info!("DIRT: fentry 'do_unlinkat_entry' attached successfully to do_unlinkat");
 
     info!("DIRT: === Monitoring Active ===");
     info!("DIRT: Both probes are now active and monitoring file deletions");
