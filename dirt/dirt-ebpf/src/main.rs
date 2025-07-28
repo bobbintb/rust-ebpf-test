@@ -9,50 +9,47 @@ use aya_ebpf::{macros::{fentry, fexit}, programs::{FEntryContext, FExitContext},
 use aya_log_ebpf::info;
 
 #[fexit]
-pub fn vfs_unlinkat_exit(ctx: FExitContext) -> u32 {
-    match try_vfs_unlinkat_exit(ctx) {
+pub fn do_unlinkat(ctx: FExitContext) -> u32 {
+    match try_do_unlinkat_exit(ctx) {
         Ok(ret) => ret,
         Err(ret) => ret,
     }
 }
 
-fn try_vfs_unlinkat_exit(ctx: FExitContext) -> Result<u32, u32> {
-    // Get return value - handle the Option type
-    let ret_val: u64 = unsafe { ctx.arg(0) };
-    
+fn try_do_unlinkat_exit(ctx: FExitContext) -> Result<u32, u32> {
     // Get process information
     let pid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
     let tgid = (pid >> 32) as u32;
     let current_pid = pid as u32;
     
     // Log return information in JSON format
-    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlinkat_exit\",\"pid\":{},\"tgid\":{},\"return\":{}}}", current_pid, tgid, ret_val);
+    info!(&ctx, "DIRT_JSON: {{\"event\":\"do_unlinkat_exit\",\"pid\":{},\"tgid\":{}}}", current_pid, tgid);
     
     unsafe {
-        bpf_printk!(b"DIRT: vfs_unlinkat EXIT - {\"pid\": %d, \"tgid\": %d, \"return\": %d}", current_pid, tgid, ret_val);
+        bpf_printk!(b"DIRT: do_unlinkat EXIT - {\"pid\": %d, \"tgid\": %d}", current_pid, tgid);
     }
     Ok(0)
 }
 
 #[fentry]
-pub fn vfs_unlinkat_entry(ctx: FEntryContext) -> u32 {
-    match try_vfs_unlinkat_entry(ctx) {
+pub fn do_unlinkat_fentry(ctx: FEntryContext) -> u32 {
+    match try_do_unlinkat_entry(ctx) {
         Ok(ret) => ret,
         Err(ret) => ret,
     }
 }
 
-fn try_vfs_unlinkat_entry(ctx: FEntryContext) -> Result<u32, u32> {
+fn try_do_unlinkat_entry(ctx: FEntryContext) -> Result<u32, u32> {
     // Get process information
     let pid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
     let tgid = (pid >> 32) as u32;
     let current_pid = pid as u32;
     
     // Log entry information with process details in JSON format
-    info!(&ctx, "DIRT_JSON: {{\"event\":\"vfs_unlinkat_entry\",\"pid\":{},\"tgid\":{}}}", current_pid, tgid);
+    info!(&ctx, "DIRT_JSON: {{\"event\":\"do_unlinkat_entry\",\"pid\":{},\"tgid\":{}}}", current_pid, tgid);
     
     unsafe {
-        bpf_printk!(b"DIRT: vfs_unlinkat ENTRY - {\"pid\": %d, \"tgid\": %d}", current_pid, tgid);
+        bpf_printk!(b"DIRT: do_unlinkat ENTRY - {\"pid\": %d, \"tgid\": %d}", current_pid, tgid);
     }
     
     Ok(0)

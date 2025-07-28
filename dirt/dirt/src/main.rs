@@ -15,7 +15,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     info!("=== DIRT eBPF File Deletion Monitor Starting ===");
-    info!("Monitoring file deletions via vfs_unlinkat system calls");
+    info!("Monitoring file deletions via do_unlinkat system calls");
     info!("You'll see detailed process information for each deletion");
 
     // Bump the memlock rlimit. This is needed for older kernels that don't use the
@@ -31,11 +31,13 @@ async fn main() -> anyhow::Result<()> {
         debug!("DIRT: Successfully set memlock limit to infinity");
     }
 
+use aya::Btf;
     // This will include your eBPF object file as raw bytes at compile-time and load it at
     // runtime. This approach is recommended for most real-world use cases. If you would
     // like to specify the eBPF program at runtime rather than at compile-time, you can
     // reach for `Bpf::load_file` instead.
     info!("DIRT: Loading eBPF program...");
+    let btf = Btf::from_sys_fs()?;
     let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
         env!("OUT_DIR"),
         "/dirt"
@@ -49,21 +51,19 @@ async fn main() -> anyhow::Result<()> {
         info!("DIRT: eBPF logger initialized successfully");
     }
     
-    // Attach the existing kretprobe
-    info!("DIRT: Loading and attaching fexit 'vfs_unlinkat_exit'...");
-    let vfs_unlinkat_exit_program: &mut FExit = ebpf.program_mut("vfs_unlinkat_exit").unwrap().try_into()?;
-    let btf = aya::Btf::from_sys_fs()?;
-    vfs_unlinkat_exit_program.load("do_unlinkat", &btf)?;
-    vfs_unlinkat_exit_program.attach()?;
-    info!("DIRT: fexit 'vfs_unlinkat_exit' attached successfully to do_unlinkat");
+    // Attach the fexit probe
+    info!("DIRT: Loading and attaching fexit 'do_unlinkat'...");
+    let unlink_exit_program: &mut FExit = ebpf.program_mut("do_unlinkat").unwrap().try_into()?;
+    unlink_exit_program.load("do_unlinkat", &btf)?;
+    unlink_exit_program.attach()?;
+    info!("DIRT: fexit 'do_unlinkat' attached successfully to do_unlinkat");
     
-    // Attach the new kprobe for vfs_unlink
-    info!("DIRT: Loading and attaching fentry 'vfs_unlinkat_entry'...");
-    let vfs_unlinkat_entry_program: &mut FEntry = ebpf.program_mut("vfs_unlinkat_entry").unwrap().try_into()?;
-    let btf = aya::Btf::from_sys_fs()?;
-    vfs_unlinkat_entry_program.load("do_unlinkat", &btf)?;
-    vfs_unlinkat_entry_program.attach()?;
-    info!("DIRT: fentry 'vfs_unlinkat_entry' attached successfully to do_unlinkat");
+    // Attach the fentry probe
+    info!("DIRT: Loading and attaching fentry 'do_unlinkat_entry'...");
+    let unlink_entry_program: &mut FEntry = ebpf.program_mut("do_unlinkat_entry").unwrap().try_into()?;
+    unlink_entry_program.load("do_unlinkat_entry", &btf)?;
+    unlink_entry_program.attach()?;
+    info!("DIRT: fentry 'do_unlinkat_entry' attached successfully to do_unlinkat");
 
     info!("DIRT: === Monitoring Active ===");
     info!("DIRT: Both probes are now active and monitoring file deletions");
