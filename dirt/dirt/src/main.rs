@@ -1,4 +1,4 @@
-use aya::programs::{FEntry, KProbe};
+use aya::programs::{FEntry, FExit};
 #[rustfmt::skip]
 use log::{debug, info, warn};
 use tokio::signal;
@@ -50,17 +50,18 @@ async fn main() -> anyhow::Result<()> {
     }
     
     // Attach the existing kretprobe
-    info!("DIRT: Loading and attaching kretprobe 'vfs_unlinkat_exit'...");
-    let vfs_unlinkat_exit_program: &mut KProbe = ebpf.program_mut("vfs_unlinkat_exit").unwrap().try_into()?;
-    vfs_unlinkat_exit_program.load()?;
-    vfs_unlinkat_exit_program.attach("vfs_unlinkat", 0)?;
-    info!("DIRT: kretprobe 'vfs_unlinkat_exit' attached successfully to vfs_unlinkat");
+    info!("DIRT: Loading and attaching fexit 'vfs_unlinkat_exit'...");
+    let vfs_unlinkat_exit_program: &mut FExit = ebpf.program_mut("vfs_unlinkat_exit").unwrap().try_into()?;
+    let btf = aya::Btf::from_sys_fs()?;
+    vfs_unlinkat_exit_program.load("vfs_unlinkat", &btf)?;
+    vfs_unlinkat_exit_program.attach()?;
+    info!("DIRT: fexit 'vfs_unlinkat_exit' attached successfully to vfs_unlinkat");
     
     // Attach the new kprobe for vfs_unlink
     info!("DIRT: Loading and attaching fentry 'vfs_unlinkat_entry'...");
     let vfs_unlinkat_entry_program: &mut FEntry = ebpf.program_mut("vfs_unlinkat_entry").unwrap().try_into()?;
     let btf = aya::Btf::from_sys_fs()?;
-    vfs_unlinkat_entry_program.load("vfs_unlinkat", &btf)?;
+    vfs_unlinkat_entry_program.load("__x64_sys_unlinkat", &btf)?;
     vfs_unlinkat_entry_program.attach()?;
     info!("DIRT: fentry 'vfs_unlinkat_entry' attached successfully to vfs_unlinkat");
 
