@@ -32,7 +32,7 @@ fn try_do_unlinkat_exit(ctx: FExitContext) -> Result<u32, u32> {
 }
 
 #[fentry]
-pub fn do_unlinkat_fentry(ctx: FEntryContext) -> u32 {
+pub fn do_unlinkat_entry(ctx: FEntryContext) -> u32 {
     match try_do_unlinkat_entry(ctx) {
         Ok(ret) => ret,
         Err(ret) => ret,
