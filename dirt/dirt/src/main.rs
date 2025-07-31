@@ -1,5 +1,8 @@
 use aya::programs::{FEntry, FExit};
+use aya::maps::Array;
 use aya::Btf;
+use std::os::unix::fs::MetadataExt;
+use std::fs;
 #[rustfmt::skip]
 use log::{debug, info, warn};
 use tokio::signal;
@@ -17,7 +20,16 @@ async fn main() -> anyhow::Result<()> {
 
     info!("=== DIRT eBPF File Deletion Monitor Starting ===");
     info!("Monitoring file deletions via do_unlinkat system calls");
-    info!("You'll see detailed process information for each deletion");
+    info!("Target filesystem: /mnt/user/");
+
+    // Get the dev_t from /mnt/user/
+    let target_path = "/mnt/user/";
+    let metadata = fs::metadata(target_path).map_err(|e| {
+        anyhow::anyhow!("Failed to get metadata for {}: {}. Make sure the path exists and is accessible.", target_path, e)
+    })?;
+    
+    let target_dev = metadata.dev() as u32;
+    info!("DIRT: Target device ID: {} (0x{:x})", target_dev, target_dev);
 
     // Bump the memlock rlimit. This is needed for older kernels that don't use the
     // new memcg based accounting, see https://lwn.net/Articles/837122/
@@ -50,6 +62,12 @@ async fn main() -> anyhow::Result<()> {
         info!("DIRT: eBPF logger initialized successfully");
     }
     
+    // Get the TARGET_DEV map and set the target device ID
+    info!("DIRT: Setting target device ID in eBPF map...");
+    let mut target_dev_map: Array<_, u32> = Array::try_from(ebpf.map_mut("TARGET_DEV").unwrap())?;
+    target_dev_map.set(0, target_dev, 0)?;
+    info!("DIRT: Target device ID {} set in eBPF map successfully", target_dev);
+    
     let btf = Btf::from_sys_fs()?;
     // Attach the fexit probe
     info!("DIRT: Loading and attaching fexit 'do_unlinkat_exit'...");
@@ -67,9 +85,10 @@ async fn main() -> anyhow::Result<()> {
 
     info!("DIRT: === Monitoring Active ===");
     info!("DIRT: Both probes are now active and monitoring file deletions");
+    info!("DIRT: Target device filter: {} ({})", target_dev, target_path);
     info!("DIRT: Each deletion will show structured JSON output with event type, timestamp, process info, and return values");
-    info!("DIRT: Try deleting a file to see detailed output!");
-    info!("DIRT: Example: 'touch /tmp/test && rm /tmp/test' in another terminal");
+    info!("DIRT: Try deleting a file in {} to see detailed output!", target_path);
+    info!("DIRT: Example: 'touch /mnt/user/test && rm /mnt/user/test' in another terminal");
     info!("DIRT: You can use 'ps -p <PID>' to see which process is deleting files");
     
     let ctrl_c = signal::ctrl_c();
