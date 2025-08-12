@@ -28,31 +28,49 @@ async fn main() -> anyhow::Result<()> {
     unlink_enter_program.load()?;
     unlink_enter_program.attach("syscalls", "sys_enter_unlink")?;
 
+    let unlinkat_enter_program: &mut TracePoint = bpf.program_mut("sys_enter_unlinkat").unwrap().try_into()?;
+    unlinkat_enter_program.load()?;
+    unlinkat_enter_program.attach("syscalls", "sys_enter_unlinkat")?;
+
     let unlink_program: &mut TracePoint = bpf.program_mut("sys_exit_unlink").unwrap().try_into()?;
     unlink_program.load()?;
     unlink_program.attach("syscalls", "sys_exit_unlink")?;
 
+    let unlinkat_program: &mut TracePoint = bpf.program_mut("sys_exit_unlinkat").unwrap().try_into()?;
+    unlinkat_program.load()?;
+    unlinkat_program.attach("syscalls", "sys_exit_unlinkat")?;
+
     let mut events =
         AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS").ok_or(anyhow::anyhow!("EVENTS map not found"))?)?;
 
-    // for cpu_id in online_cpus().map_err(|(msg, err)| anyhow::anyhow!("{}: {}", msg, err))? {
-    //     let mut buf = events.open(cpu_id, None)?;
+    for cpu_id in online_cpus().map_err(|(msg, err)| anyhow::anyhow!("{}: {}", msg, err))? {
+        let mut buf = events.open(cpu_id, None)?;
 
-    //     tokio::spawn(async move {
-    //         let mut buffers = (0..10)
-    //             .map(|_| BytesMut::with_capacity(4096))
-    //             .collect::<Vec<_>>();
+        tokio::spawn(async move {
+            let mut buffers = (0..10)
+                .map(|_| BytesMut::with_capacity(4096))
+                .collect::<Vec<_>>();
 
-    //         loop {
-    //             let events = buf.read_events(&mut buffers).await.unwrap();
-    //             for i in 0..events.read {
-    //                 let ptr = buffers[i].as_ptr() as *const UnlinkEvent;
-    //                 let data = unsafe { ptr::read_unaligned(ptr) };
-    //                 println!("{}", serde_json::to_string(&data).unwrap());
-    //             }
-    //         }
-    //     });
-    // }
+            loop {
+                let events = buf.read_events(&mut buffers).await.unwrap();
+                for i in 0..events.read {
+                    let ptr = buffers[i].as_ptr() as *const UnlinkEvent;
+                    let data = unsafe { ptr::read_unaligned(ptr) };
+
+                    let comm = String::from_utf8_lossy(&data.comm);
+                    let filename = String::from_utf8_lossy(&data.filename);
+
+                    let output = serde_json::json!({
+                        "pid": data.pid,
+                        "comm": comm.trim_end_matches('\0'),
+                        "filename": filename.trim_end_matches('\0'),
+                    });
+
+                    println!("{}", serde_json::to_string(&output).unwrap());
+                }
+            }
+        });
+    }
 
     println!("Waiting for Ctrl-C...");
     tokio::signal::ctrl_c().await?;
