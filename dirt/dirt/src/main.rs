@@ -1,9 +1,9 @@
 use aya::{
     include_bytes_aligned,
     maps::{perf::AsyncPerfEventArray, Array},
-    programs::{FEntry, FExit},
+    programs::TracePoint,
     util::online_cpus,
-    Btf, Ebpf,
+    Ebpf,
 };
 use bytes::BytesMut;
 use dirt_common::UnlinkEvent;
@@ -16,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
         "/dirt"
     )))?));
 
-    let target_path = "/mnt/user/";
+    let target_path = "/tmp/";  // Change this to a path that exists on your system
     let metadata = fs::metadata(target_path)?;
     let target_dev = metadata.dev() as u32;
 
@@ -24,14 +24,13 @@ async fn main() -> anyhow::Result<()> {
         Array::try_from(bpf.map_mut("TARGET_DEV").ok_or(anyhow::anyhow!("TARGET_DEV map not found"))?)?;
     target_dev_map.set(0, target_dev, 0)?;
 
-    let btf = Btf::from_sys_fs()?;
-    let fentry_program: &mut FEntry = bpf.program_mut("do_unlinkat_entry").unwrap().try_into()?;
-    fentry_program.load("do_unlinkat", &btf)?;
-    fentry_program.attach()?;
+    let unlink_program: &mut TracePoint = bpf.program_mut("sys_exit_unlink").unwrap().try_into()?;
+    unlink_program.load()?;
+    unlink_program.attach("syscalls", "sys_exit_unlink")?;
 
-    let fexit_program: &mut FExit = bpf.program_mut("do_unlinkat_exit").unwrap().try_into()?;
-    fexit_program.load("do_unlinkat", &btf)?;
-    fexit_program.attach()?;
+    let unlinkat_program: &mut TracePoint = bpf.program_mut("sys_exit_unlinkat").unwrap().try_into()?;
+    unlinkat_program.load()?;
+    unlinkat_program.attach("syscalls", "sys_exit_unlinkat")?;
 
     let mut events =
         AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS").ok_or(anyhow::anyhow!("EVENTS map not found"))?)?;
