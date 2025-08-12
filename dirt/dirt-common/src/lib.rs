@@ -7,6 +7,7 @@ pub enum EventType {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[repr(C)]
 pub struct UnlinkEvent {
     pub event_type: EventType,
     pub pid: u32,
