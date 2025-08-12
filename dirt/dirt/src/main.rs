@@ -6,9 +6,14 @@ use aya::{
     Ebpf,
 };
 use bytes::BytesMut;
-use dirt_common::{EventType, UnlinkEvent};
-use serde::Serialize;
-use std::{fs, os::unix::fs::MetadataExt, ptr};
+use dirt_common::{EventType, UnlinkEvent, MAX_PREFIXES, MAX_PREFIX_LEN};
+use serde::{Deserialize, Serialize};
+use std::{fs, ptr};
+
+#[derive(Deserialize)]
+struct Config {
+    directories: Vec<String>,
+}
 
 #[derive(Serialize)]
 struct UnlinkEventJson {
@@ -27,13 +32,22 @@ async fn main() -> anyhow::Result<()> {
         "/dirt"
     )))?));
 
-    let target_path = "/tmp/";
-    let metadata = fs::metadata(target_path)?;
-    let target_dev = metadata.dev() as u32;
+    let config_data = fs::read_to_string("config.json")?;
+    let config: Config = serde_json::from_str(&config_data)?;
 
-    let mut target_dev_map: Array<_, u32> =
-        Array::try_from(bpf.map_mut("TARGET_DEV").ok_or(anyhow::anyhow!("TARGET_DEV map not found"))?)?;
-    target_dev_map.set(0, target_dev, 0)?;
+    let mut dir_prefixes: Array<_, [u8; MAX_PREFIX_LEN]> =
+        Array::try_from(bpf.map_mut("DIR_PREFIXES").ok_or(anyhow::anyhow!("DIR_PREFIXES map not found"))?)?;
+
+    for (i, dir) in config.directories.iter().enumerate() {
+        if i >= MAX_PREFIXES as usize {
+            break;
+        }
+        let mut prefix = [0u8; MAX_PREFIX_LEN];
+        let bytes = dir.as_bytes();
+        let len = bytes.len().min(MAX_PREFIX_LEN);
+        prefix[..len].copy_from_slice(&bytes[..len]);
+        dir_prefixes.set(i as u32, prefix, 0)?;
+    }
 
     // Load and attach enter tracepoints
     let unlink_enter_program: &mut TracePoint =

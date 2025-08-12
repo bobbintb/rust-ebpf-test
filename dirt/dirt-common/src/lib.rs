@@ -19,3 +19,6 @@ pub struct UnlinkEvent {
     pub ret_val: i32,
     pub filename: [u8; 256],
 }
+
+pub const MAX_PREFIXES: u32 = 10;
+pub const MAX_PREFIX_LEN: usize = 64;
