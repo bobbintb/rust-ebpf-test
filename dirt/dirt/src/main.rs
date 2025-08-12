@@ -24,6 +24,14 @@ async fn main() -> anyhow::Result<()> {
         Array::try_from(bpf.map_mut("TARGET_DEV").ok_or(anyhow::anyhow!("TARGET_DEV map not found"))?)?;
     target_dev_map.set(0, target_dev, 0)?;
 
+    let unlink_enter_program: &mut TracePoint = bpf.program_mut("sys_enter_unlink").unwrap().try_into()?;
+    unlink_enter_program.load()?;
+    unlink_enter_program.attach("syscalls", "sys_enter_unlink")?;
+
+    let unlinkat_enter_program: &mut TracePoint = bpf.program_mut("sys_enter_unlinkat").unwrap().try_into()?;
+    unlinkat_enter_program.load()?;
+    unlinkat_enter_program.attach("syscalls", "sys_enter_unlinkat")?;
+
     let unlink_program: &mut TracePoint = bpf.program_mut("sys_exit_unlink").unwrap().try_into()?;
     unlink_program.load()?;
     unlink_program.attach("syscalls", "sys_exit_unlink")?;
@@ -48,7 +56,17 @@ async fn main() -> anyhow::Result<()> {
                 for i in 0..events.read {
                     let ptr = buffers[i].as_ptr() as *const UnlinkEvent;
                     let data = unsafe { ptr::read_unaligned(ptr) };
-                    println!("{}", serde_json::to_string(&data).unwrap());
+
+                    let comm = String::from_utf8_lossy(&data.comm);
+                    let filename = String::from_utf8_lossy(&data.filename);
+
+                    let output = serde_json::json!({
+                        "pid": data.pid,
+                        "comm": comm.trim_end_matches('\0'),
+                        "filename": filename.trim_end_matches('\0'),
+                    });
+
+                    println!("{}", serde_json::to_string(&output).unwrap());
                 }
             }
         });
