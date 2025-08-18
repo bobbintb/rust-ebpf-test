@@ -1,5 +1,9 @@
 #![no_std]
 
+#[cfg(feature = "user")]
+use serde::Serialize;
+
+#[cfg_attr(feature = "user", derive(Serialize))]
 #[derive(Debug, Clone, Copy)]
 pub enum EventType {
     FEntry,
