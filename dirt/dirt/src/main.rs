@@ -1,64 +1,38 @@
 use aya::{
     include_bytes_aligned,
-    maps::{perf::AsyncPerfEventArray, Array},
-    programs::TracePoint,
+    maps::perf::PerfEventArray,
+    programs::FEntry,
     util::online_cpus,
-    Ebpf,
+    Ebpf, Btf,
 };
 use bytes::BytesMut;
-use dirt_common::{EventType, UnlinkEvent};
+use dirt_common::{UnlinkEvent};
 use serde::Serialize;
-use std::{fs, os::unix::fs::MetadataExt, ptr};
+use std::{ptr};
 
 #[derive(Serialize)]
 struct UnlinkEventJson {
-    event_type: EventType,
+    event_type: String,
     pid: u32,
     tgid: u32,
-    target_dev: u32,
-    ret_val: i32,
     filename: String,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let bpf = Box::leak(Box::new(Ebpf::load(include_bytes_aligned!(concat!(
+    let mut bpf = Ebpf::load(include_bytes_aligned!(concat!(
         env!("OUT_DIR"),
         "/dirt"
-    )))?));
+    )))?;
 
-    let target_path = "/tmp/";
-    let metadata = fs::metadata(target_path)?;
-    let target_dev = metadata.dev() as u32;
-
-    let mut target_dev_map: Array<_, u32> =
-        Array::try_from(bpf.map_mut("TARGET_DEV").ok_or(anyhow::anyhow!("TARGET_DEV map not found"))?)?;
-    target_dev_map.set(0, target_dev, 0)?;
-
-    // Load and attach enter tracepoints
-    let unlink_enter_program: &mut TracePoint =
-        bpf.program_mut("sys_enter_unlink").unwrap().try_into()?;
-    unlink_enter_program.load()?;
-    unlink_enter_program.attach("syscalls", "sys_enter_unlink")?;
-
-    let unlinkat_enter_program: &mut TracePoint =
-        bpf.program_mut("sys_enter_unlinkat").unwrap().try_into()?;
-    unlinkat_enter_program.load()?;
-    unlinkat_enter_program.attach("syscalls", "sys_enter_unlinkat")?;
-
-    // Load and attach exit tracepoints
-    let unlink_exit_program: &mut TracePoint =
-        bpf.program_mut("sys_exit_unlink").unwrap().try_into()?;
-    unlink_exit_program.load()?;
-    unlink_exit_program.attach("syscalls", "sys_exit_unlink")?;
-
-    let unlinkat_exit_program: &mut TracePoint =
-        bpf.program_mut("sys_exit_unlinkat").unwrap().try_into()?;
-    unlinkat_exit_program.load()?;
-    unlinkat_exit_program.attach("syscalls", "sys_exit_unlinkat")?;
+    let program: &mut FEntry =
+        bpf.program_mut("vfs_unlink").unwrap().try_into()?;
+    let btf = Btf::from_sys_fs()?;
+    program.load("vfs_unlink", &btf)?;
+    program.attach()?;
 
     let mut events =
-        AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS").ok_or(anyhow::anyhow!("EVENTS map not found"))?)?;
+        PerfEventArray::try_from(bpf.map_mut("EVENTS").ok_or(anyhow::anyhow!("EVENTS map not found"))?)?;
 
     for cpu_id in online_cpus().map_err(|(msg, err)| anyhow::anyhow!("{}: {}", msg, err))? {
         let mut buf = events.open(cpu_id, None)?;
@@ -69,7 +43,7 @@ async fn main() -> anyhow::Result<()> {
                 .collect::<Vec<_>>();
 
             loop {
-                let events = buf.read_events(&mut buffers).await.unwrap();
+                let events = buf.read_events(&mut buffers).unwrap();
                 for i in 0..events.read {
                     let ptr = buffers[i].as_ptr() as *const UnlinkEvent;
                     let data = unsafe { ptr::read_unaligned(ptr) };
@@ -82,11 +56,9 @@ async fn main() -> anyhow::Result<()> {
                     let filename = String::from_utf8_lossy(&data.filename[..first_null]).to_string();
 
                     let event_json = UnlinkEventJson {
-                        event_type: data.event_type,
+                        event_type: format!("{:?}", data.event_type),
                         pid: data.pid,
                         tgid: data.tgid,
-                        target_dev: data.target_dev,
-                        ret_val: data.ret_val,
                         filename,
                     };
 
