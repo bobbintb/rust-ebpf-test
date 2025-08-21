@@ -21,10 +21,11 @@ static EVENTS: PerfEventArray<UnlinkEvent> = PerfEventArray::new(0);
 #[map]
 static FILENAMES: HashMap<u32, [u8; MAX_FILENAME_LEN]> = HashMap::with_max_entries(1024, 0);
 
+use aya_ebpf::helpers::bpf_probe_read_kernel;
 // Kernel helpers (not wrapped by this aya-ebpf version)
-unsafe extern "C" {
+#[link(name = "bpf_path_d_path")]
+extern "C" {
     fn bpf_path_d_path(path: *mut core::ffi::c_void, buf: *mut u8, sz: u32) -> i64;
-    fn bpf_probe_read_kernel(dst: *mut u8, size: u32, src: *const u8) -> i64;
 }
 
 #[repr(C)]
@@ -67,13 +68,7 @@ fn try_security_path_unlink(ctx: ProbeContext) -> Result<u32, i64> {
     };
 
     // Read mnt from dir->mnt (first field of struct path)
-    unsafe {
-        let _ = bpf_probe_read_kernel(
-            &mut p.mnt as *mut _ as *mut u8,
-            core::mem::size_of::<*mut core::ffi::c_void>() as u32,
-            dir_ptr as *const u8,
-        );
-    }
+    p.mnt = unsafe { bpf_probe_read_kernel(dir_ptr as *const *mut core::ffi::c_void)? };
 
     let mut filename = [0u8; MAX_FILENAME_LEN];
     let rc = unsafe {
