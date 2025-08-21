@@ -1,9 +1,8 @@
 use aya::{
-    include_bytes_aligned,
-    maps::{perf::AsyncPerfEventArray, Array},
+    Ebpf, include_bytes_aligned,
+    maps::{Array, perf::AsyncPerfEventArray},
     programs::TracePoint,
     util::online_cpus,
-    Ebpf,
 };
 use bytes::BytesMut;
 use dirt_common::{EventType, UnlinkEvent};
@@ -31,8 +30,10 @@ async fn main() -> anyhow::Result<()> {
     let metadata = fs::metadata(target_path)?;
     let target_dev = metadata.dev() as u32;
 
-    let mut target_dev_map: Array<_, u32> =
-        Array::try_from(bpf.map_mut("TARGET_DEV").ok_or(anyhow::anyhow!("TARGET_DEV map not found"))?)?;
+    let mut target_dev_map: Array<_, u32> = Array::try_from(
+        bpf.map_mut("TARGET_DEV")
+            .ok_or(anyhow::anyhow!("TARGET_DEV map not found"))?,
+    )?;
     target_dev_map.set(0, target_dev, 0)?;
 
     // Load and attach enter tracepoints
@@ -57,8 +58,10 @@ async fn main() -> anyhow::Result<()> {
     unlinkat_exit_program.load()?;
     unlinkat_exit_program.attach("syscalls", "sys_exit_unlinkat")?;
 
-    let mut events =
-        AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS").ok_or(anyhow::anyhow!("EVENTS map not found"))?)?;
+    let mut events = AsyncPerfEventArray::try_from(
+        bpf.map_mut("EVENTS")
+            .ok_or(anyhow::anyhow!("EVENTS map not found"))?,
+    )?;
 
     for cpu_id in online_cpus().map_err(|(msg, err)| anyhow::anyhow!("{}: {}", msg, err))? {
         let mut buf = events.open(cpu_id, None)?;
@@ -79,7 +82,8 @@ async fn main() -> anyhow::Result<()> {
                         .iter()
                         .position(|&b| b == 0)
                         .unwrap_or(data.filename.len());
-                    let filename = String::from_utf8_lossy(&data.filename[..first_null]).to_string();
+                    let filename =
+                        String::from_utf8_lossy(&data.filename[..first_null]).to_string();
 
                     let event_json = UnlinkEventJson {
                         event_type: data.event_type,
