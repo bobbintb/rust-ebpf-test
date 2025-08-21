@@ -42,6 +42,8 @@ rustup install stable
 rustup toolchain install nightly --component rust-src
 cargo install bpf-linker
 cargo install cargo-generate
+cargo install bindgen-cli
+cargo install --git https://github.com/aya-rs/aya -- aya-tool
 sudo apt install build-essential llvm-14 clang-14 libclang-14-dev cmake libssl-dev pkg-config python3 git -y
 wget $(curl -s https://archive.ubuntu.com/ubuntu/pool/main/l/linux/ | grep -oP 'bpftool_[^"]+_amd64.deb' | sort -V | tail -1 | awk '{print "https://archive.ubuntu.com/ubuntu/pool/main/l/linux/" $1}')
 sudo apt install ./bpftool* -y
