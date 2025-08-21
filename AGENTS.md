@@ -33,17 +33,11 @@ This Agents.md file provides comprehensive guidance for AI agents working with t
 The following script will set up the build envrionment on Ubuntu. If the agent has a snapshot available then this script was likely already ran and captured in the snapshot. In such case, running it again should not be needed but can be used for reference.
 
 ```bash
-# rm -dr /home/jules/.rustup/
-# sudo apt update -y
-# sudo apt remove rustc -y
-# curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-# . "$HOME/.cargo/env"
-# rustup install stable
 rustup toolchain install nightly --component rust-src
 cargo install bpf-linker
-# cargo install cargo-generate
 cargo install bindgen-cli
 cargo install --git https://github.com/aya-rs/aya -- aya-tool
+sudo apt update -y
 sudo apt install build-essential llvm-14 clang-14 libclang-14-dev cmake libssl-dev pkg-config python3 git -y
 wget $(curl -s https://archive.ubuntu.com/ubuntu/pool/main/l/linux/ | grep -oP 'bpftool_[^"]+_amd64.deb' | sort -V | tail -1 | awk '{print "https://archive.ubuntu.com/ubuntu/pool/main/l/linux/" $1}')
 sudo apt install ./bpftool* -y
