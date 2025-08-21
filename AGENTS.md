@@ -33,21 +33,22 @@ This Agents.md file provides comprehensive guidance for AI agents working with t
 The following script will set up the build envrionment on Ubuntu. If the agent has a snapshot available then this script was likely already ran and captured in the snapshot. In such case, running it again should not be needed but can be used for reference.
 
 ```bash
-rm -dr /home/jules/.rustup/
-sudo apt update -y
-sudo apt remove rustc -y
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-. "$HOME/.cargo/env"
-rustup install stable
+# rm -dr /home/jules/.rustup/
+# sudo apt update -y
+# sudo apt remove rustc -y
+# curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+# . "$HOME/.cargo/env"
+# rustup install stable
 rustup toolchain install nightly --component rust-src
 cargo install bpf-linker
-cargo install cargo-generate
+# cargo install cargo-generate
 cargo install bindgen-cli
 cargo install --git https://github.com/aya-rs/aya -- aya-tool
 sudo apt install build-essential llvm-14 clang-14 libclang-14-dev cmake libssl-dev pkg-config python3 git -y
 wget $(curl -s https://archive.ubuntu.com/ubuntu/pool/main/l/linux/ | grep -oP 'bpftool_[^"]+_amd64.deb' | sort -V | tail -1 | awk '{print "https://archive.ubuntu.com/ubuntu/pool/main/l/linux/" $1}')
 sudo apt install ./bpftool* -y
 ```
+
 ## Rust modules and dependencies
 
 This program uses `aya` for working with ebpf. Below are the latest versions of the aya modules the agent may need for this program. Take careful note of the names of these modules as these are the only `aya` modules that should be needed and are named correctly. Historically, agents have tended to try to import non-existent modules with similar names or non-existent versions and for some unknown reason, have been unable to proceed or resolve the issue because they will not check the Rust cargo repository for the correct names and versions. For this reason, I have included this information to clarify the names and versions of any `aya` modules that may be needed. The agent should not, under any circumstance, try to use an `aya` module that is not listed here because these are all the available `aya` modules. One frequent example is `aya-bpf`. The module `aya-bpf` does not exist and the proper module is `aya-ebpf`. If the agent believes a certain `aya` module is needed that is not in this list, the agent is wrong and should refer to this list for clarification.
@@ -75,6 +76,14 @@ Agents should only try and build from the root project folder and not the indivi
 ```bash
 cd rust-ebpf-test/dirt/
 ```
+
+The vmlinux.rs file needs to be generated before building the program. Run the following commands from the root project folder to generate the vmlinux.rs file:
+
+```bash
+aya-tool generate inode dentry path file iattr super_block qstr filename cred task_struct > dirt-ebpf/src/vmlinux.rs
+sed -i '1i #![allow(non_camel_case_types, non_snake_case, non_upper_case_globals, dead_code, unnecessary_transmutes)]' dirt-ebpf/src/vmlinux.rs
+```
+
 Agents should use the following command to build the project:
 
 ```bash
