@@ -1,14 +1,17 @@
 [package]
 name = "dirt-ebpf"
 version = "0.1.0"
-edition = "2021"
-
-[lib]
-crate-type = ["cdylib"]
+edition.workspace = true
 
 [dependencies]
-aya-ebpf = "0.1.1"
-aya-ebpf-macros = "0.1.1"
+dirt-common = { path = "../dirt-common" }
+
+aya-ebpf = { workspace = true }
+aya-log-ebpf = { workspace = true }
 
 [build-dependencies]
-which = "6.0.3"
+which = { workspace = true }
+
+[[bin]]
+name = "dirt"
+path = "src/main.rs"
