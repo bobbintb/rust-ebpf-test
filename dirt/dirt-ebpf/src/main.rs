@@ -8,7 +8,7 @@ use aya_ebpf::{
     maps::{Array, PerfEventArray},
     programs::ProbeContext,
     helpers::bpf_get_current_pid_tgid,
-    BpfContext,
+    EbpfContext,
 };
 use dirt_common::{EventType, UnlinkEvent};
 
