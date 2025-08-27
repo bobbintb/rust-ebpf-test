@@ -8,6 +8,7 @@ dirt-common = { path = "../dirt-common" }
 
 aya-ebpf = { workspace = true }
 aya-log-ebpf = { workspace = true }
+aya-ebpf-cty = { workspace = true }
 
 [build-dependencies]
 which = { workspace = true }

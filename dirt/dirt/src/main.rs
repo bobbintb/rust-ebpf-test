@@ -1,8 +1,7 @@
 use aya::{
-    Btf,
     include_bytes_aligned,
     maps::{perf::AsyncPerfEventArray, Array},
-    programs::Lsm,
+    programs::KProbe,
     util::online_cpus,
     Ebpf,
 };
@@ -36,10 +35,10 @@ async fn main() -> anyhow::Result<()> {
         Array::try_from(bpf.map_mut("TARGET_DEV").ok_or(anyhow::anyhow!("TARGET_DEV map not found"))?)?;
     target_dev_map.set(0, target_dev, 0)?;
 
-    let btf = Btf::from_sys_fs()?;
-    let program: &mut Lsm = bpf.program_mut("file_free").unwrap().try_into()?;
-    program.load("file_free", &btf)?;
-    program.attach()?;
+    let program: &mut KProbe =
+        bpf.program_mut("security_inode_unlink").unwrap().try_into()?;
+    program.load()?;
+    program.attach("security_inode_unlink", 0)?;
 
     let mut events =
         AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS").ok_or(anyhow::anyhow!("EVENTS map not found"))?)?;
