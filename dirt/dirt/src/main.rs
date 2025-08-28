@@ -1,9 +1,9 @@
 use aya::{
     include_bytes_aligned,
     maps::{perf::AsyncPerfEventArray, Array},
-    programs::KProbe,
+    programs::fentry,
     util::online_cpus,
-    Ebpf,
+    Btf, Ebpf,
 };
 use bytes::BytesMut;
 use dirt_common::{EventType, UnlinkEvent};
@@ -35,11 +35,12 @@ async fn main() -> anyhow::Result<()> {
         Array::try_from(bpf.map_mut("TARGET_DEV").ok_or(anyhow::anyhow!("TARGET_DEV map not found"))?)?;
     target_dev_map.set(0, target_dev, 0)?;
 
-    // Load and attach the kprobe
-    let unlink_kprobe: &mut KProbe =
+    // Load and attach the fentry program
+    let btf = Btf::from_sys_fs()?;
+    let unlink_fentry: &mut fentry::FEntry =
         bpf.program_mut("security_path_unlink").unwrap().try_into()?;
-    unlink_kprobe.load()?;
-    unlink_kprobe.attach("security_path_unlink", 0)?;
+    unlink_fentry.load("security_path_unlink", &btf)?;
+    unlink_fentry.attach()?;
 
     let mut events =
         AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS").ok_or(anyhow::anyhow!("EVENTS map not found"))?)?;

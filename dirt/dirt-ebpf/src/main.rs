@@ -4,9 +4,9 @@
 mod vmlinux;
 
 use aya_ebpf::{
-    macros::{kprobe, map},
+    macros::{fentry, map},
     maps::{Array, PerfEventArray, PerCpuArray},
-    programs::ProbeContext,
+    programs::FEntryContext,
     helpers::bpf_d_path,
 };
 use dirt_common::{EventType, UnlinkEvent};
@@ -23,19 +23,20 @@ static EVENTS: PerfEventArray<UnlinkEvent> = PerfEventArray::new(0);
 #[map]
 static FILENAME_BUF: PerCpuArray<[u8; MAX_FILENAME_LEN]> = PerCpuArray::with_max_entries(1, 0);
 
-#[kprobe]
-pub fn security_path_unlink(ctx: ProbeContext) -> u32 {
+#[fentry]
+pub fn security_path_unlink(ctx: FEntryContext) -> u32 {
     match try_security_path_unlink(ctx) {
         Ok(ret) => ret,
         Err(_) => 1,
     }
 }
 
-fn try_security_path_unlink(ctx: ProbeContext) -> Result<u32, i64> {
-    let path = unsafe {
-        let path_ptr: *const path = ctx.arg(0).ok_or(1i64)?;
-        &*path_ptr
-    };
+fn try_security_path_unlink(ctx: FEntryContext) -> Result<u32, i64> {
+    let path_ptr: *const path = unsafe { ctx.arg(0) };
+    if path_ptr.is_null() {
+        return Ok(0);
+    }
+    let path = unsafe { &*path_ptr };
 
     let filename_buf = unsafe {
         let buf_ptr = FILENAME_BUF.get_ptr_mut(0).ok_or(1i64)?;
