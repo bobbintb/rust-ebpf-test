@@ -4,11 +4,13 @@
 mod vmlinux;
 
 use aya_ebpf::{
-    macros::{map, tracepoint},
-    maps::{Array, HashMap, PerfEventArray},
-    programs::TracePointContext,
+    macros::{kprobe, map},
+    maps::{Array, PerfEventArray, PerCpuArray},
+    programs::ProbeContext,
+    helpers::bpf_d_path,
 };
 use dirt_common::{EventType, UnlinkEvent};
+use vmlinux::path;
 
 const MAX_FILENAME_LEN: usize = 256;
 
@@ -19,74 +21,39 @@ static TARGET_DEV: Array<u32> = Array::with_max_entries(1, 0);
 static EVENTS: PerfEventArray<UnlinkEvent> = PerfEventArray::new(0);
 
 #[map]
-static FILENAMES: HashMap<u32, [u8; MAX_FILENAME_LEN]> = HashMap::with_max_entries(1024, 0);
+static FILENAME_BUF: PerCpuArray<[u8; MAX_FILENAME_LEN]> = PerCpuArray::with_max_entries(1, 0);
 
-#[tracepoint]
-pub fn sys_enter_unlink(ctx: TracePointContext) -> u32 {
-    match try_sys_enter_unlink(ctx) {
+#[kprobe]
+pub fn security_path_unlink(ctx: ProbeContext) -> u32 {
+    match try_security_path_unlink(ctx) {
         Ok(ret) => ret,
         Err(_) => 1,
     }
 }
 
-fn try_sys_enter_unlink(ctx: TracePointContext) -> Result<u32, i64> {
-    let pid_tgid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
-    let tgid = (pid_tgid >> 32) as u32;
+fn try_security_path_unlink(ctx: ProbeContext) -> Result<u32, i64> {
+    let path = unsafe {
+        let path_ptr: *const path = ctx.arg(0).ok_or(1i64)?;
+        &*path_ptr
+    };
 
-    let pathname_ptr: u64 = unsafe { ctx.read_at(16)? };
-    let mut filename = [0u8; MAX_FILENAME_LEN];
-    let res =
-        unsafe { aya_ebpf::helpers::bpf_probe_read_user_str_bytes(pathname_ptr as *const u8, &mut filename) };
+    let filename_buf = unsafe {
+        let buf_ptr = FILENAME_BUF.get_ptr_mut(0).ok_or(1i64)?;
+        &mut *buf_ptr
+    };
 
-    if res.is_ok() {
-        FILENAMES.insert(&tgid, &filename, 0)?;
-    }
+    let path_str_len = unsafe {
+        bpf_d_path(
+            path as *const _ as *mut _,
+            filename_buf.as_mut_ptr() as *mut i8,
+            MAX_FILENAME_LEN as u32,
+        )
+    };
 
-    Ok(0)
-}
+    if path_str_len > 0 {
+        let pid_tgid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
+        let tgid = (pid_tgid >> 32) as u32;
 
-#[tracepoint]
-pub fn sys_enter_unlinkat(ctx: TracePointContext) -> u32 {
-    match try_sys_enter_unlinkat(ctx) {
-        Ok(ret) => ret,
-        Err(_) => 1,
-    }
-}
-
-fn try_sys_enter_unlinkat(ctx: TracePointContext) -> Result<u32, i64> {
-    let pid_tgid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
-    let tgid = (pid_tgid >> 32) as u32;
-
-    let pathname_ptr: u64 = unsafe { ctx.read_at(24)? };
-    let mut filename = [0u8; MAX_FILENAME_LEN];
-    let res =
-        unsafe { aya_ebpf::helpers::bpf_probe_read_user_str_bytes(pathname_ptr as *const u8, &mut filename) };
-
-    if res.is_ok() {
-        FILENAMES.insert(&tgid, &filename, 0)?;
-    }
-
-    Ok(0)
-}
-
-#[tracepoint]
-pub fn sys_exit_unlink(ctx: TracePointContext) -> u32 {
-    match try_sys_exit_unlink(ctx) {
-        Ok(ret) => ret,
-        Err(ret) => ret,
-    }
-}
-
-fn try_sys_exit_unlink(ctx: TracePointContext) -> Result<u32, u32> {
-    let ret_val = unsafe { ctx.read_at::<i64>(16).map(|val| val as i32).unwrap_or(-1) };
-    if ret_val != 0 {
-        return Ok(0);
-    }
-
-    let pid_tgid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
-    let tgid = (pid_tgid >> 32) as u32;
-
-    if let Some(filename) = unsafe { FILENAMES.get(&tgid) } {
         let target_dev = match TARGET_DEV.get(0) {
             Some(val) => *val,
             None => return Err(1),
@@ -94,59 +61,18 @@ fn try_sys_exit_unlink(ctx: TracePointContext) -> Result<u32, u32> {
 
         let pid = pid_tgid as u32;
         let event = UnlinkEvent {
-            event_type: EventType::FExit,
+            event_type: EventType::FEntry,
             pid,
             tgid,
             target_dev,
-            ret_val,
-            filename: *filename,
+            ret_val: 0,
+            filename: *filename_buf,
         };
         EVENTS.output(&ctx, &event, 0);
-        FILENAMES.remove(&tgid).ok();
     }
 
     Ok(0)
 }
-
-#[tracepoint]
-pub fn sys_exit_unlinkat(ctx: TracePointContext) -> u32 {
-    match try_sys_exit_unlinkat(ctx) {
-        Ok(ret) => ret,
-        Err(ret) => ret,
-    }
-}
-
-fn try_sys_exit_unlinkat(ctx: TracePointContext) -> Result<u32, u32> {
-    let ret_val = unsafe { ctx.read_at::<i64>(16).map(|val| val as i32).unwrap_or(-1) };
-    if ret_val != 0 {
-        return Ok(0);
-    }
-
-    let pid_tgid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
-    let tgid = (pid_tgid >> 32) as u32;
-
-    if let Some(filename) = unsafe { FILENAMES.get(&tgid) } {
-        let target_dev = match TARGET_DEV.get(0) {
-            Some(val) => *val,
-            None => return Err(1),
-        };
-
-        let pid = pid_tgid as u32;
-        let event = UnlinkEvent {
-            event_type: EventType::FExit,
-            pid,
-            tgid,
-            target_dev,
-            ret_val,
-            filename: *filename,
-        };
-        EVENTS.output(&ctx, &event, 0);
-        FILENAMES.remove(&tgid).ok();
-    }
-
-    Ok(0)
-}
-
 
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {

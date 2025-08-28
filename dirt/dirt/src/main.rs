@@ -1,7 +1,7 @@
 use aya::{
     include_bytes_aligned,
     maps::{perf::AsyncPerfEventArray, Array},
-    programs::TracePoint,
+    programs::KProbe,
     util::online_cpus,
     Ebpf,
 };
@@ -35,27 +35,11 @@ async fn main() -> anyhow::Result<()> {
         Array::try_from(bpf.map_mut("TARGET_DEV").ok_or(anyhow::anyhow!("TARGET_DEV map not found"))?)?;
     target_dev_map.set(0, target_dev, 0)?;
 
-    // Load and attach enter tracepoints
-    let unlink_enter_program: &mut TracePoint =
-        bpf.program_mut("sys_enter_unlink").unwrap().try_into()?;
-    unlink_enter_program.load()?;
-    unlink_enter_program.attach("syscalls", "sys_enter_unlink")?;
-
-    let unlinkat_enter_program: &mut TracePoint =
-        bpf.program_mut("sys_enter_unlinkat").unwrap().try_into()?;
-    unlinkat_enter_program.load()?;
-    unlinkat_enter_program.attach("syscalls", "sys_enter_unlinkat")?;
-
-    // Load and attach exit tracepoints
-    let unlink_exit_program: &mut TracePoint =
-        bpf.program_mut("sys_exit_unlink").unwrap().try_into()?;
-    unlink_exit_program.load()?;
-    unlink_exit_program.attach("syscalls", "sys_exit_unlink")?;
-
-    let unlinkat_exit_program: &mut TracePoint =
-        bpf.program_mut("sys_exit_unlinkat").unwrap().try_into()?;
-    unlinkat_exit_program.load()?;
-    unlinkat_exit_program.attach("syscalls", "sys_exit_unlinkat")?;
+    // Load and attach the kprobe
+    let unlink_kprobe: &mut KProbe =
+        bpf.program_mut("security_path_unlink").unwrap().try_into()?;
+    unlink_kprobe.load()?;
+    unlink_kprobe.attach("security_path_unlink", 0)?;
 
     let mut events =
         AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS").ok_or(anyhow::anyhow!("EVENTS map not found"))?)?;
