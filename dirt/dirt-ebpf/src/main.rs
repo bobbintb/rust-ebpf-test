@@ -39,7 +39,7 @@ fn try_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
     let path = unsafe { &*path_ptr };
 
     let filename_buf = unsafe {
-        let buf_ptr = FILENAME_BUF.get_ptr_mut(0).ok_or(1i32)?;
+        let buf_ptr = FILENAME_BUF.get_ptr_mut(0).ok_or(-1)?;
         &mut *buf_ptr
     };
 
@@ -57,7 +57,7 @@ fn try_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
 
         let target_dev = match TARGET_DEV.get(0) {
             Some(val) => *val,
-            None => return Err(1),
+            None => return Err(-1),
         };
 
         let pid = pid_tgid as u32;
