@@ -4,9 +4,9 @@
 mod vmlinux;
 
 use aya_ebpf::{
-    macros::{fentry, map},
+    macros::{lsm, map},
     maps::{Array, PerfEventArray, PerCpuArray},
-    programs::FEntryContext,
+    programs::LsmContext,
     helpers::bpf_d_path,
 };
 use dirt_common::{EventType, UnlinkEvent};
@@ -23,15 +23,15 @@ static EVENTS: PerfEventArray<UnlinkEvent> = PerfEventArray::new(0);
 #[map]
 static FILENAME_BUF: PerCpuArray<[u8; MAX_FILENAME_LEN]> = PerCpuArray::with_max_entries(1, 0);
 
-#[fentry]
-pub fn security_path_unlink(ctx: FEntryContext) -> u32 {
-    match try_security_path_unlink(ctx) {
+#[lsm(hook = "path_unlink")]
+pub fn path_unlink(ctx: LsmContext) -> i32 {
+    match try_path_unlink(ctx) {
         Ok(ret) => ret,
-        Err(_) => 1,
+        Err(ret) => ret,
     }
 }
 
-fn try_security_path_unlink(ctx: FEntryContext) -> Result<u32, i64> {
+fn try_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
     let path_ptr: *const path = unsafe { ctx.arg(0) };
     if path_ptr.is_null() {
         return Ok(0);
@@ -39,7 +39,7 @@ fn try_security_path_unlink(ctx: FEntryContext) -> Result<u32, i64> {
     let path = unsafe { &*path_ptr };
 
     let filename_buf = unsafe {
-        let buf_ptr = FILENAME_BUF.get_ptr_mut(0).ok_or(1i64)?;
+        let buf_ptr = FILENAME_BUF.get_ptr_mut(0).ok_or(1i32)?;
         &mut *buf_ptr
     };
 

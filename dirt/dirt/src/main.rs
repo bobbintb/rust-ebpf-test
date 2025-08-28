@@ -1,7 +1,7 @@
 use aya::{
     include_bytes_aligned,
     maps::{perf::AsyncPerfEventArray, Array},
-    programs::fentry,
+    programs::Lsm,
     util::online_cpus,
     Btf, Ebpf,
 };
@@ -35,12 +35,11 @@ async fn main() -> anyhow::Result<()> {
         Array::try_from(bpf.map_mut("TARGET_DEV").ok_or(anyhow::anyhow!("TARGET_DEV map not found"))?)?;
     target_dev_map.set(0, target_dev, 0)?;
 
-    // Load and attach the fentry program
+    // Load and attach the lsm program
     let btf = Btf::from_sys_fs()?;
-    let unlink_fentry: &mut fentry::FEntry =
-        bpf.program_mut("security_path_unlink").unwrap().try_into()?;
-    unlink_fentry.load("security_path_unlink", &btf)?;
-    unlink_fentry.attach()?;
+    let program: &mut Lsm = bpf.program_mut("path_unlink").unwrap().try_into()?;
+    program.load("path_unlink", &btf)?;
+    program.attach()?;
 
     let mut events =
         AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS").ok_or(anyhow::anyhow!("EVENTS map not found"))?)?;
