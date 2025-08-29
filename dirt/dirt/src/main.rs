@@ -17,6 +17,7 @@ struct UnlinkEventJson {
     tgid: u32,
     target_dev: u32,
     ret_val: i32,
+    pathname: String,
     filename: String,
 }
 
@@ -35,7 +36,6 @@ async fn main() -> anyhow::Result<()> {
         Array::try_from(bpf.map_mut("TARGET_DEV").ok_or(anyhow::anyhow!("TARGET_DEV map not found"))?)?;
     target_dev_map.set(0, target_dev, 0)?;
 
-    // Load and attach the lsm program
     let btf = Btf::from_sys_fs()?;
     let program: &mut Lsm = bpf.program_mut("lsm_path_unlink").unwrap().try_into()?;
     program.load("path_unlink", &btf)?;
@@ -58,12 +58,19 @@ async fn main() -> anyhow::Result<()> {
                     let ptr = buffers[i].as_ptr() as *const UnlinkEvent;
                     let data = unsafe { ptr::read_unaligned(ptr) };
 
-                    let first_null = data
+                    let first_null_filename = data
+                        .pathname
+                        .iter()
+                        .position(|&b| b == 0)
+                        .unwrap_or(data.filename.len());
+                    let pathname = String::from_utf8_lossy(&data.pathname[..first_null_filename]).to_string();
+
+                    let first_null_dentry = data
                         .filename
                         .iter()
                         .position(|&b| b == 0)
                         .unwrap_or(data.filename.len());
-                    let filename = String::from_utf8_lossy(&data.filename[..first_null]).to_string();
+                    let filename = String::from_utf8_lossy(&data.filename[..first_null_dentry]).to_string();
 
                     let event_json = UnlinkEventJson {
                         event_type: data.event_type,
@@ -71,6 +78,7 @@ async fn main() -> anyhow::Result<()> {
                         tgid: data.tgid,
                         target_dev: data.target_dev,
                         ret_val: data.ret_val,
+                        pathname,
                         filename,
                     };
 
