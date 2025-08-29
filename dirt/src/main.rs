@@ -6,15 +6,13 @@ use aya::{
     Btf, Ebpf,
 };
 use bytes::BytesMut;
-use dirt_common::{EventType, UnlinkEvent};
+use dirt_common::{EventType, FileEvent};
 use serde::Serialize;
 use std::{fs, os::unix::fs::MetadataExt, ptr};
 
 #[derive(Serialize)]
-struct UnlinkEventJson {
+struct FileEventJson {
     event_type: EventType,
-    pid: u32,
-    tgid: u32,
     target_dev: u32,
     ret_val: i32,
     pathname: String,
@@ -55,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
             loop {
                 let events = buf.read_events(&mut buffers).await.unwrap();
                 for i in 0..events.read {
-                    let ptr = buffers[i].as_ptr() as *const UnlinkEvent;
+                    let ptr = buffers[i].as_ptr() as *const FileEvent;
                     let data = unsafe { ptr::read_unaligned(ptr) };
 
                     let first_null_filename = data
@@ -72,10 +70,8 @@ async fn main() -> anyhow::Result<()> {
                         .unwrap_or(data.filename.len());
                     let filename = String::from_utf8_lossy(&data.filename[..first_null_dentry]).to_string();
 
-                    let event_json = UnlinkEventJson {
+                    let event_json = FileEventJson {
                         event_type: data.event_type,
-                        pid: data.pid,
-                        tgid: data.tgid,
                         target_dev: data.target_dev,
                         ret_val: data.ret_val,
                         pathname,

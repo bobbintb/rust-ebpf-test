@@ -7,9 +7,9 @@ use aya_ebpf::{
     macros::{lsm, map},
     maps::{Array, PerfEventArray, PerCpuArray},
     programs::LsmContext,
-    helpers::{bpf_d_path, bpf_get_current_pid_tgid, bpf_probe_read_kernel_str_bytes},
+    helpers::{bpf_d_path, bpf_probe_read_kernel_str_bytes},
 };
-use dirt_common::{EventType, UnlinkEvent};
+use dirt_common::{EventType, FileEvent};
 use core::cmp;
 use vmlinux::path;
 
@@ -20,7 +20,7 @@ const MAX_PATH_LEN: usize = 4096;
 static TARGET_DEV: Array<u32> = Array::with_max_entries(1, 0);
 
 #[map]
-static EVENTS: PerfEventArray<UnlinkEvent> = PerfEventArray::new(0);
+static EVENTS: PerfEventArray<FileEvent> = PerfEventArray::new(0);
 
 #[map]
 static PATH_NAME_BUF: PerCpuArray<[u8; MAX_PATH_LEN]> = PerCpuArray::with_max_entries(1, 0);
@@ -29,7 +29,7 @@ static PATH_NAME_BUF: PerCpuArray<[u8; MAX_PATH_LEN]> = PerCpuArray::with_max_en
 static FILE_NAME_BUF: PerCpuArray<[u8; MAX_FILENAME_LEN]> = PerCpuArray::with_max_entries(1, 0);
 
 #[map]
-static EVENT_BUF: PerCpuArray<UnlinkEvent> = PerCpuArray::with_max_entries(1, 0);
+static EVENT_BUF: PerCpuArray<FileEvent> = PerCpuArray::with_max_entries(1, 0);
 
 #[lsm(hook = "path_unlink")]
 pub fn lsm_path_unlink(ctx: LsmContext) -> i32 {
@@ -77,19 +77,13 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
         unsafe { (*filename_buf)[0] = 0; }
     }
 
-    let pid_tgid = bpf_get_current_pid_tgid();
-    let tgid = (pid_tgid >> 32) as u32;
-    let pid = pid_tgid as u32;
-
     let target_dev = match TARGET_DEV.get(0) {
         Some(val) => *val,
         None => return Err(-1),
     };
 
     unsafe {
-        (*event_buf).event_type = EventType::FEntry;
-        (*event_buf).pid = pid;
-        (*event_buf).tgid = tgid;
+        (*event_buf).event_type = EventType::Unlink;
         (*event_buf).target_dev = target_dev;
         (*event_buf).ret_val = 0i32;
 
