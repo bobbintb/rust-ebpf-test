@@ -37,7 +37,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Load and attach the lsm program
     let btf = Btf::from_sys_fs()?;
-    let program: &mut Lsm = bpf.program_mut("path_unlink").unwrap().try_into()?;
+    let program: &mut Lsm = bpf.program_mut("lsm_path_unlink").unwrap().try_into()?;
     program.load("path_unlink", &btf)?;
     program.attach()?;
 
