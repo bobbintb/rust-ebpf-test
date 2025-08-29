@@ -17,5 +17,6 @@ pub struct UnlinkEvent {
     pub tgid: u32,
     pub target_dev: u32,
     pub ret_val: i32,
+    pub pathname: [u8; 4096],
     pub filename: [u8; 256],
 }
