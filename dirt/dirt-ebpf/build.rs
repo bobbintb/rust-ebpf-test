@@ -15,9 +15,6 @@ use std::process::Command;
 /// [bindeps]: https://doc.rust-lang.org/nightly/cargo/reference/unstable.html?highlight=feature#artifact-dependencies
 
 fn main() {
-    let bpf_linker = which("bpf-linker").unwrap();
-    println!("cargo:rerun-if-changed={}", bpf_linker.to_str().unwrap());
-
     let out_file = "src/vmlinux.rs";
 
     // Remove old file if exists
@@ -66,4 +63,7 @@ fn main() {
                  "#[repr(C)]\npub struct ec_response_get_next_data_v3__bindgen_ty_1 {");
 
     fs::write(out_file, contents).expect("failed to apply sed replacements");
+
+    let bpf_linker = which("bpf-linker").unwrap();
+    println!("cargo:rerun-if-changed={}", bpf_linker.to_str().unwrap());
 }
