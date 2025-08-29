@@ -71,13 +71,6 @@ Agents should only try and build from the root project folder and not the indivi
 cd rust-ebpf-test/dirt/
 ```
 
-The vmlinux.rs file needs to be generated before building the program. Run the following commands from the root project folder to generate the vmlinux.rs file:
-
-```bash
-aya-tool generate inode dentry path file iattr super_block qstr filename cred task_struct > dirt-ebpf/src/vmlinux.rs
-sed -i '1i #![allow(non_camel_case_types, non_snake_case, non_upper_case_globals, dead_code, unnecessary_transmutes)]' dirt-ebpf/src/vmlinux.rs
-```
-
 Agents should use the following command to build the project:
 
 ```bash
