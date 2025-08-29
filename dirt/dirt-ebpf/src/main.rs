@@ -24,14 +24,14 @@ static EVENTS: PerfEventArray<UnlinkEvent> = PerfEventArray::new(0);
 static FILENAME_BUF: PerCpuArray<[u8; MAX_FILENAME_LEN]> = PerCpuArray::with_max_entries(1, 0);
 
 #[lsm(hook = "path_unlink")]
-pub fn path_unlink(ctx: LsmContext) -> i32 {
-    match try_path_unlink(ctx) {
+pub fn lsm_path_unlink(ctx: LsmContext) -> i32 {
+    match try_lsm_path_unlink(ctx) {
         Ok(ret) => ret,
         Err(ret) => ret,
     }
 }
 
-fn try_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
+fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
     let dir_path_ptr: *const path = unsafe { ctx.arg(0) };
     if dir_path_ptr.is_null() {
         return Ok(0);
