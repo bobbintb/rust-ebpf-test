@@ -63,7 +63,7 @@ The build environment has been thoroughly tested and is correct for this project
 Agents should only try and build from the root project folder and not the individual program folders. After cloning, enter the root project folder with the following command:
 
 ```bash
-cd rust-ebpf-test/dirt/
+cd rust-ebpf-test/
 ```
 
 Agents should use the following command to build the project:
@@ -72,4 +72,4 @@ Agents should use the following command to build the project:
 cargo +nightly build
 ```
 
-Because this is an eBPF CO-RE program and eBPF and BTF must be enabled in the kernel, agents may not be able to run and test the program once it has been built. After completing an assigned task, agents should build the project from the project root folder using the build command previously specified. If the build fails, agents should attempt to address build errors and retry building until the project builds successfully.
+Because this is an eBPF CO-RE program, both eBPF and BTF must be enabled in the kernel. Agents may not be able to run and test the program once it has been built if the kernel in their build environment was not compile with these configuration options. As such, the project includes a pregenerated `vmlinux.rs` file that is needed for BTF. This file is dependent on the kernel of the build environment. The included `vmlinux.rs` is for kernel 6.12.24. If the agent's build environment does have eBPF and BTF enabled then and only then should the `vmlinux.rs` file removed and the build environment will regenerate it for that environment. After completing an assigned task, agents should build the project from the project root folder using the build command previously specified. If the build fails, agents should attempt to address build errors and retry building until the project builds successfully.
