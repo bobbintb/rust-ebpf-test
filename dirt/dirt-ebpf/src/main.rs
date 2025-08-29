@@ -1,3 +1,44 @@
+#![no_std]
+#![no_main]
+
+mod vmlinux;
+
+use aya_ebpf::{
+    macros::{lsm, map},
+    maps::{Array, PerfEventArray, PerCpuArray},
+    programs::LsmContext,
+    helpers::{bpf_d_path, bpf_get_current_pid_tgid, bpf_probe_read_kernel_str_bytes},
+};
+use dirt_common::{EventType, UnlinkEvent};
+use core::cmp;
+use vmlinux::path;
+
+const MAX_FILENAME_LEN: usize = 256;
+const MAX_PATH_LEN: usize = 4096;
+
+#[map]
+static TARGET_DEV: Array<u32> = Array::with_max_entries(1, 0);
+
+#[map]
+static EVENTS: PerfEventArray<UnlinkEvent> = PerfEventArray::new(0);
+
+#[map]
+static PATH_NAME_BUF: PerCpuArray<[u8; MAX_PATH_LEN]> = PerCpuArray::with_max_entries(1, 0);
+
+#[map]
+static FILE_NAME_BUF: PerCpuArray<[u8; MAX_FILENAME_LEN]> = PerCpuArray::with_max_entries(1, 0);
+
+#[map]
+static EVENT_BUF: PerCpuArray<UnlinkEvent> = PerCpuArray::with_max_entries(1, 0);
+
+#[lsm(hook = "path_unlink")]
+pub fn lsm_path_unlink(ctx: LsmContext) -> i32 {
+    match try_lsm_path_unlink(ctx) {
+        Ok(ret) => ret,
+        Err(ret) => ret,
+    }
+}
+
 fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
     let path_ptr: *const path = unsafe { ctx.arg(0) };
     if path_ptr.is_null() {
@@ -78,4 +119,9 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
     }
 
     Ok(0)
+}
+
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {}
 }
