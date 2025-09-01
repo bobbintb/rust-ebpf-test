@@ -1,0 +1,1 @@
+Here's the dilemma. Should I use `bpf_d_path` to get the file name or do it in user space? This uses `bpf_d_path` but I'm not sure that's best so I'm going to document this in case I table it for later. It might be fine to use this but it requires more kernel configuration options enabled. I can also filter some using the target device.
