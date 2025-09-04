@@ -15,8 +15,10 @@ struct FileEventJson {
     event_type: EventType,
     target_dev: u32,
     ret_val: i32,
-    pathname: String,
-    filename: String,
+    src_path: String,
+    src_file: String,
+    trgt_path: String,
+    trgt_file: String,
 }
 
 #[tokio::main]
@@ -56,26 +58,42 @@ async fn main() -> anyhow::Result<()> {
                     let ptr = buffers[i].as_ptr() as *const FileEvent;
                     let data = unsafe { ptr::read_unaligned(ptr) };
 
-                    let first_null_filename = data
-                        .pathname
+                    let first_null_src_path = data
+                        .src_path
                         .iter()
                         .position(|&b| b == 0)
-                        .unwrap_or(data.filename.len());
-                    let pathname = String::from_utf8_lossy(&data.pathname[..first_null_filename]).to_string();
+                        .unwrap_or(data.src_path.len());
+                    let src_path = String::from_utf8_lossy(&data.src_path[..first_null_src_path]).to_string();
 
-                    let first_null_dentry = data
-                        .filename
+                    let first_null_src_file = data
+                        .src_file
                         .iter()
                         .position(|&b| b == 0)
-                        .unwrap_or(data.filename.len());
-                    let filename = String::from_utf8_lossy(&data.filename[..first_null_dentry]).to_string();
+                        .unwrap_or(data.src_file.len());
+                    let src_file = String::from_utf8_lossy(&data.src_file[..first_null_src_file]).to_string();
+
+                    let first_null_trgt_path = data
+                        .trgt_path
+                        .iter()
+                        .position(|&b| b == 0)
+                        .unwrap_or(data.trgt_path.len());
+                    let trgt_path = String::from_utf8_lossy(&data.trgt_path[..first_null_trgt_path]).to_string();
+
+                    let first_null_trgt_file = data
+                        .trgt_file
+                        .iter()
+                        .position(|&b| b == 0)
+                        .unwrap_or(data.trgt_file.len());
+                    let trgt_file = String::from_utf8_lossy(&data.trgt_file[..first_null_trgt_file]).to_string();
 
                     let event_json = FileEventJson {
                         event_type: data.event_type,
                         target_dev: data.target_dev,
                         ret_val: data.ret_val,
-                        pathname,
-                        filename,
+                        src_path,
+                        src_file,
+                        trgt_path,
+                        trgt_file,
                     };
 
                     println!("{}", serde_json::to_string(&event_json).unwrap());

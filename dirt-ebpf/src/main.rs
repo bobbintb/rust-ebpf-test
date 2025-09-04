@@ -100,10 +100,10 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
         let path_copy_len = cmp::min(path_len as usize, MAX_PATH_LEN - 1);
         core::ptr::copy_nonoverlapping(
             (&*pathname_buf)[..path_copy_len].as_ptr(),
-            (&mut (*event_buf).pathname)[..path_copy_len].as_mut_ptr(),
+            (&mut (*event_buf).src_path)[..path_copy_len].as_mut_ptr(),
             path_copy_len,
         );
-        (*event_buf).pathname[path_copy_len] = 0;
+        (*event_buf).src_path[path_copy_len] = 0;
 
         // Copy filename safely
         let mut i = 0usize;
@@ -113,10 +113,14 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
         let fn_copy = cmp::min(i, MAX_FILENAME_LEN - 1);
         core::ptr::copy_nonoverlapping(
             (&*filename_buf)[..fn_copy].as_ptr(),
-            (&mut (*event_buf).filename)[..fn_copy].as_mut_ptr(),
+            (&mut (*event_buf).src_file)[..fn_copy].as_mut_ptr(),
             fn_copy,
         );
-        (*event_buf).filename[fn_copy] = 0;
+        (*event_buf).src_file[fn_copy] = 0;
+
+        // Zero out trgt_path and trgt_file for unlink events
+        (*event_buf).trgt_path[0] = 0;
+        (*event_buf).trgt_file[0] = 0;
 
         EVENTS.output(&ctx, &*event_buf, 0);
     }
