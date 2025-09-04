@@ -20,7 +20,7 @@ const MAX_PATH_LEN: usize = 4096;
 static TARGET_DEV: Array<u32> = Array::with_max_entries(1, 0);
 
 #[map]
-static EVENTS: RingBuf = RingBuf::with_byte_size(262144, 0);
+static EVENTS: RingBuf = RingBuf::with_byte_size(262144, 0); // 256k - I don't know if this is too big.
 
 #[map]
 static PATH_NAME_BUF: PerCpuArray<[u8; MAX_PATH_LEN]> = PerCpuArray::with_max_entries(1, 0);
