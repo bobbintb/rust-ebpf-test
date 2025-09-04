@@ -26,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
         "/dirt"
     )))?));
 
-    let target_path = "/tmp/";
+    let target_path = "/mnt/user/";
     let metadata = fs::metadata(target_path)?;
     let target_dev = metadata.dev() as u32;
 
