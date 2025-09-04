@@ -10,13 +10,16 @@ pub enum EventType {
     Create,
 }
 
+pub const MAX_FILENAME_LEN: usize = 256;
+pub const MAX_PATH_LEN: usize = 4096;
+
 #[derive(Debug, Clone, Copy)]
 pub struct FileEvent {
     pub event_type: EventType,
     pub target_dev: u32,
     pub ret_val: i32,
-    pub src_path: [u8; 4096],
-    pub src_file: [u8; 256],
-    pub trgt_path: [u8; 4096],
-    pub trgt_file: [u8; 256],
+    pub src_path: [u8; MAX_PATH_LEN + 1], // the +1s are because helper functions will still null terminate if files are the maximum size imposed by Linux.
+    pub src_file: [u8; MAX_FILENAME_LEN + 1],
+    pub trgt_path: [u8; MAX_PATH_LEN +1],
+    pub trgt_file: [u8; MAX_FILENAME_LEN +1],
 }
