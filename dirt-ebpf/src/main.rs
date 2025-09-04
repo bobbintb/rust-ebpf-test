@@ -40,6 +40,21 @@ pub fn lsm_path_unlink(ctx: LsmContext) -> i32 {
 }
 
 fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
+    // --- early filter by device ID ---
+    let target_dev = TARGET_DEV.get(0).ok_or(-1)?;
+    let dentry_ptr: *const vmlinux::dentry = unsafe { ctx.arg(1) };
+
+    if unsafe { (dentry_ptr as *const vmlinux::dentry)
+                .as_ref()
+                .and_then(|d| d.d_inode.as_ref())
+                .and_then(|i| i.i_sb.as_ref())
+                .map(|sb| sb.s_dev != *target_dev)
+                .unwrap_or(false) }
+    {
+        return Ok(0);
+    }
+
+    // --- continue as before ---
     let path_ptr: *const path = unsafe { ctx.arg(0) };
     if path_ptr.is_null() {
         return Ok(0);
@@ -61,7 +76,6 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
         return Ok(0);
     }
 
-    let dentry_ptr: *const vmlinux::dentry = unsafe { ctx.arg(1) };
     if !dentry_ptr.is_null() {
         let dentry = unsafe { &*dentry_ptr };
         let dentry_len = unsafe { dentry.d_name.__bindgen_anon_1.__bindgen_anon_1.len as usize };
@@ -77,24 +91,9 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
         unsafe { (*filename_buf)[0] = 0; }
     }
 
-    let target_dev = match TARGET_DEV.get(0) {
-        Some(val) => *val,
-        None => return Err(-1),
-    };
-
-    if let Some(dentry) = unsafe { (path.dentry as *const vmlinux::dentry).as_ref() } {
-        if let Some(inode) = unsafe { (dentry.d_inode as *const vmlinux::inode).as_ref() } {
-            if let Some(super_block) = unsafe { (inode.i_sb as *const vmlinux::super_block).as_ref() } {
-                if super_block.s_dev != target_dev {
-                    return Ok(0);
-                }
-            }
-        }
-    }
-
     unsafe {
         (*event_buf).event_type = EventType::Unlink;
-        (*event_buf).target_dev = target_dev;
+        (*event_buf).target_dev = *target_dev;
         (*event_buf).ret_val = 0i32;
 
         // Copy path safely
