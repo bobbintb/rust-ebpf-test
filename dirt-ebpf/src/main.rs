@@ -82,6 +82,16 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
         None => return Err(-1),
     };
 
+    if let Some(dentry) = unsafe { (path.dentry as *const vmlinux::dentry).as_ref() } {
+        if let Some(inode) = unsafe { (dentry.d_inode as *const vmlinux::inode).as_ref() } {
+            if let Some(super_block) = unsafe { (inode.i_sb as *const vmlinux::super_block).as_ref() } {
+                if super_block.s_dev != target_dev {
+                    return Ok(0);
+                }
+            }
+        }
+    }
+
     unsafe {
         (*event_buf).event_type = EventType::Unlink;
         (*event_buf).target_dev = target_dev;
