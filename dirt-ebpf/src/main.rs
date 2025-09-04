@@ -5,7 +5,7 @@ mod vmlinux;
 
 use aya_ebpf::{
     macros::{lsm, map},
-    maps::{Array, PerfEventArray, PerCpuArray},
+    maps::{Array, RingBuf, PerCpuArray},
     programs::LsmContext,
     helpers::{bpf_d_path, bpf_probe_read_kernel_str_bytes},
 };
@@ -20,7 +20,7 @@ const MAX_PATH_LEN: usize = 4096;
 static TARGET_DEV: Array<u32> = Array::with_max_entries(1, 0);
 
 #[map]
-static EVENTS: PerfEventArray<FileEvent> = PerfEventArray::new(0);
+static EVENTS: RingBuf = RingBuf::with_byte_size(262144, 0);
 
 #[map]
 static PATH_NAME_BUF: PerCpuArray<[u8; MAX_PATH_LEN]> = PerCpuArray::with_max_entries(1, 0);
@@ -122,7 +122,7 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
         (*event_buf).trgt_path[0] = 0;
         (*event_buf).trgt_file[0] = 0;
 
-        EVENTS.output(&ctx, &*event_buf, 0);
+        EVENTS.output(&*event_buf, 0).map_err(|_| -1)?;
     }
 
     Ok(0)
