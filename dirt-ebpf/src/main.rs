@@ -9,12 +9,9 @@ use aya_ebpf::{
     programs::LsmContext,
     helpers::{bpf_d_path, bpf_probe_read_kernel_str_bytes},
 };
-use dirt_common::{EventType, FileEvent};
+use dirt_common::*;
 use core::cmp;
 use vmlinux::path;
-
-const MAX_FILENAME_LEN: usize = 256;
-const MAX_PATH_LEN: usize = 4096;
 
 #[map]
 static TARGET_DEV: Array<u32> = Array::with_max_entries(1, 0);
@@ -48,7 +45,7 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
         return Ok(0);
     }
 
-    // --- get path --- The path point may not be valid if trying to unlink a file that has already unlinked, since this hook happens before the actual unlink.
+    // --- get path ---
     let path_ptr: *const path = unsafe { ctx.arg(0) };
     if path_ptr.is_null() { return Ok(0); }
     let path = unsafe { &*path_ptr };
@@ -60,8 +57,6 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
         bpf_d_path(path as *const _ as *mut _, (*event_buf).src_path.as_mut_ptr() as *mut i8, MAX_PATH_LEN as u32)
     };
     if path_len <= 0 { return Ok(0); }
-    let path_copy_len = cmp::min(path_len as usize, MAX_PATH_LEN - 1);
-    unsafe { (*event_buf).src_path[path_copy_len] = 0; }
 
     // --- read filename directly into event_buf.src_file ---
     if !dentry_ptr.is_null() {
@@ -77,7 +72,6 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
                 core::slice::from_raw_parts_mut(ptr, copy_len),
             )
         };
-        unsafe { (*event_buf).src_file[copy_len - 1] = 0; }
     } else {
         unsafe { (*event_buf).src_file[0] = 0; }
     }
@@ -87,8 +81,6 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
         (*event_buf).event_type = EventType::Unlink;
         (*event_buf).target_dev = *target_dev;
         (*event_buf).ret_val = 0;
-        (*event_buf).trgt_path[0] = 0;
-        (*event_buf).trgt_file[0] = 0;
 
         EVENTS.output(&*event_buf, 0).map_err(|_| -1)?;
     }
