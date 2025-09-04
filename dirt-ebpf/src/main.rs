@@ -54,7 +54,7 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
 
     // --- read full path directly into event_buf.src_path ---
     let path_len = unsafe {
-        bpf_d_path(path as *const _ as *mut _, (*event_buf).src_path.as_mut_ptr() as *mut i8, MAX_PATH_LEN + 1 as u32)
+        bpf_d_path(path as *const _ as *mut _, (*event_buf).src_path.as_mut_ptr() as *mut i8, (MAX_PATH_LEN as u32) + 1)
     };
     if path_len <= 0 { return Ok(0); }
 
