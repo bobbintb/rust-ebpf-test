@@ -20,13 +20,7 @@ const MAX_PATH_LEN: usize = 4096;
 static TARGET_DEV: Array<u32> = Array::with_max_entries(1, 0);
 
 #[map]
-static EVENTS: RingBuf = RingBuf::with_byte_size(262144, 0); // 256k - I don't know if this is too big.
-
-#[map]
-static PATH_NAME_BUF: PerCpuArray<[u8; MAX_PATH_LEN]> = PerCpuArray::with_max_entries(1, 0);
-
-#[map]
-static FILE_NAME_BUF: PerCpuArray<[u8; MAX_FILENAME_LEN]> = PerCpuArray::with_max_entries(1, 0);
+static EVENTS: RingBuf = RingBuf::with_byte_size(262144, 0);
 
 #[map]
 static EVENT_BUF: PerCpuArray<FileEvent> = PerCpuArray::with_max_entries(1, 0);
@@ -44,81 +38,55 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
     let target_dev = TARGET_DEV.get(0).ok_or(-1)?;
     let dentry_ptr: *const vmlinux::dentry = unsafe { ctx.arg(1) };
 
-    if unsafe { (dentry_ptr as *const vmlinux::dentry)
-                .as_ref()
-                .and_then(|d| d.d_inode.as_ref())
-                .and_then(|i| i.i_sb.as_ref())
-                .map(|sb| sb.s_dev != *target_dev)
-                .unwrap_or(false) }
-    {
+    if unsafe {
+        dentry_ptr.as_ref()
+            .and_then(|d| d.d_inode.as_ref())
+            .and_then(|i| i.i_sb.as_ref())
+            .map(|sb| sb.s_dev != *target_dev)
+            .unwrap_or(false)
+    } {
         return Ok(0);
     }
 
-    // --- continue as before ---
+    // --- get path --- The path point may not be valid if trying to unlink a file that has already unlinked, since this hook happens before the actual unlink.
     let path_ptr: *const path = unsafe { ctx.arg(0) };
-    if path_ptr.is_null() {
-        return Ok(0);
-    }
+    if path_ptr.is_null() { return Ok(0); }
     let path = unsafe { &*path_ptr };
 
-    let pathname_buf = PATH_NAME_BUF.get_ptr_mut(0).ok_or(-1)?;
-    let filename_buf = FILE_NAME_BUF.get_ptr_mut(0).ok_or(-1)?;
     let event_buf = EVENT_BUF.get_ptr_mut(0).ok_or(-1)?;
 
+    // --- read full path directly into event_buf.src_path ---
     let path_len = unsafe {
-        bpf_d_path(
-            path as *const _ as *mut _,
-            (&mut *pathname_buf)[..].as_mut_ptr() as *mut i8,
-            MAX_PATH_LEN as u32,
-        )
+        bpf_d_path(path as *const _ as *mut _, (*event_buf).src_path.as_mut_ptr() as *mut i8, MAX_PATH_LEN as u32)
     };
-    if path_len <= 0 {
-        return Ok(0);
-    }
+    if path_len <= 0 { return Ok(0); }
+    let path_copy_len = cmp::min(path_len as usize, MAX_PATH_LEN - 1);
+    unsafe { (*event_buf).src_path[path_copy_len] = 0; }
 
+    // --- read filename directly into event_buf.src_file ---
     if !dentry_ptr.is_null() {
         let dentry = unsafe { &*dentry_ptr };
-        let dentry_len = unsafe { dentry.d_name.__bindgen_anon_1.__bindgen_anon_1.len as usize };
-        let copy_len = cmp::min(dentry_len + 1, MAX_FILENAME_LEN); // include null
-        unsafe {
-            let buf_ptr = (*filename_buf).as_mut_ptr();
-            let _ = bpf_probe_read_kernel_str_bytes(
+        let copy_len = cmp::min(
+            unsafe { dentry.d_name.__bindgen_anon_1.__bindgen_anon_1.len as usize + 1 },
+            MAX_FILENAME_LEN,
+        );
+        let ptr = unsafe { (*event_buf).src_file.as_mut_ptr() };
+        let _ = unsafe {
+            bpf_probe_read_kernel_str_bytes(
                 dentry.d_name.name as *const u8,
-                core::slice::from_raw_parts_mut(buf_ptr, copy_len),
-            );
-        }
+                core::slice::from_raw_parts_mut(ptr, copy_len),
+            )
+        };
+        unsafe { (*event_buf).src_file[copy_len - 1] = 0; }
     } else {
-        unsafe { (*filename_buf)[0] = 0; }
+        unsafe { (*event_buf).src_file[0] = 0; }
     }
 
+    // --- fill remaining fields ---
     unsafe {
         (*event_buf).event_type = EventType::Unlink;
         (*event_buf).target_dev = *target_dev;
-        (*event_buf).ret_val = 0i32;
-
-        // Copy path safely
-        let path_copy_len = cmp::min(path_len as usize, MAX_PATH_LEN - 1);
-        core::ptr::copy_nonoverlapping(
-            (&*pathname_buf)[..path_copy_len].as_ptr(),
-            (&mut (*event_buf).src_path)[..path_copy_len].as_mut_ptr(),
-            path_copy_len,
-        );
-        (*event_buf).src_path[path_copy_len] = 0;
-
-        // Copy filename safely
-        let mut i = 0usize;
-        while i < MAX_FILENAME_LEN && (*filename_buf)[i] != 0 {
-            i += 1;
-        }
-        let fn_copy = cmp::min(i, MAX_FILENAME_LEN - 1);
-        core::ptr::copy_nonoverlapping(
-            (&*filename_buf)[..fn_copy].as_ptr(),
-            (&mut (*event_buf).src_file)[..fn_copy].as_mut_ptr(),
-            fn_copy,
-        );
-        (*event_buf).src_file[fn_copy] = 0;
-
-        // Zero out trgt_path and trgt_file for unlink events
+        (*event_buf).ret_val = 0;
         (*event_buf).trgt_path[0] = 0;
         (*event_buf).trgt_file[0] = 0;
 
