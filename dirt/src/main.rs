@@ -4,7 +4,7 @@ use aya::{
     programs::Lsm,
     Btf, Ebpf,
 };
-use dirt_common::{EventType, FileEvent};
+use dirt_common::*;
 use serde::Serialize;
 use std::{fs, os::unix::fs::MetadataExt, ptr};
 
