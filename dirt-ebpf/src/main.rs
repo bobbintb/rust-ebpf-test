@@ -5,7 +5,7 @@ mod vmlinux;
 
 use aya_ebpf::{
     macros::{lsm, map},
-    maps::{Array, PerfEventArray, PerCpuArray},
+    maps::{Array, RingBuf, PerCpuArray},
     programs::LsmContext,
     helpers::{bpf_d_path, bpf_probe_read_kernel_str_bytes},
 };
@@ -20,7 +20,7 @@ const MAX_PATH_LEN: usize = 4096;
 static TARGET_DEV: Array<u32> = Array::with_max_entries(1, 0);
 
 #[map]
-static EVENTS: PerfEventArray<FileEvent> = PerfEventArray::new(0);
+static EVENTS: RingBuf = RingBuf::with_byte_size(262144, 0); // 256k - I don't know if this is too big.
 
 #[map]
 static PATH_NAME_BUF: PerCpuArray<[u8; MAX_PATH_LEN]> = PerCpuArray::with_max_entries(1, 0);
@@ -100,10 +100,10 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
         let path_copy_len = cmp::min(path_len as usize, MAX_PATH_LEN - 1);
         core::ptr::copy_nonoverlapping(
             (&*pathname_buf)[..path_copy_len].as_ptr(),
-            (&mut (*event_buf).pathname)[..path_copy_len].as_mut_ptr(),
+            (&mut (*event_buf).src_path)[..path_copy_len].as_mut_ptr(),
             path_copy_len,
         );
-        (*event_buf).pathname[path_copy_len] = 0;
+        (*event_buf).src_path[path_copy_len] = 0;
 
         // Copy filename safely
         let mut i = 0usize;
@@ -113,12 +113,16 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
         let fn_copy = cmp::min(i, MAX_FILENAME_LEN - 1);
         core::ptr::copy_nonoverlapping(
             (&*filename_buf)[..fn_copy].as_ptr(),
-            (&mut (*event_buf).filename)[..fn_copy].as_mut_ptr(),
+            (&mut (*event_buf).src_file)[..fn_copy].as_mut_ptr(),
             fn_copy,
         );
-        (*event_buf).filename[fn_copy] = 0;
+        (*event_buf).src_file[fn_copy] = 0;
 
-        EVENTS.output(&ctx, &*event_buf, 0);
+        // Zero out trgt_path and trgt_file for unlink events
+        (*event_buf).trgt_path[0] = 0;
+        (*event_buf).trgt_file[0] = 0;
+
+        EVENTS.output(&*event_buf, 0).map_err(|_| -1)?;
     }
 
     Ok(0)

@@ -1,11 +1,9 @@
 use aya::{
     include_bytes_aligned,
-    maps::{perf::AsyncPerfEventArray, Array},
+    maps::{Array, RingBuf},
     programs::Lsm,
-    util::online_cpus,
     Btf, Ebpf,
 };
-use bytes::BytesMut;
 use dirt_common::{EventType, FileEvent};
 use serde::Serialize;
 use std::{fs, os::unix::fs::MetadataExt, ptr};
@@ -15,8 +13,10 @@ struct FileEventJson {
     event_type: EventType,
     target_dev: u32,
     ret_val: i32,
-    pathname: String,
-    filename: String,
+    src_path: String,
+    src_file: String,
+    trgt_path: String,
+    trgt_file: String,
 }
 
 #[tokio::main]
@@ -39,50 +39,66 @@ async fn main() -> anyhow::Result<()> {
     program.load("path_unlink", &btf)?;
     program.attach()?;
 
-    let mut events =
-        AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS").ok_or(anyhow::anyhow!("EVENTS map not found"))?)?;
+    let mut ring_buf =
+        RingBuf::try_from(bpf.map_mut("EVENTS").ok_or(anyhow::anyhow!("EVENTS map not found"))?)?;
 
-    for cpu_id in online_cpus().map_err(|(msg, err)| anyhow::anyhow!("{}: {}", msg, err))? {
-        let mut buf = events.open(cpu_id, None)?;
+    tokio::spawn(async move {
+        loop {
+            while let Some(data) = ring_buf.next() {
+                let ptr = data.as_ptr() as *const FileEvent;
+                let data = unsafe { ptr::read_unaligned(ptr) };
 
-        tokio::spawn(async move {
-            let mut buffers = (0..10)
-                .map(|_| BytesMut::with_capacity(4096))
-                .collect::<Vec<_>>();
+                let first_null_src_path = data
+                    .src_path
+                    .iter()
+                    .position(|&b| b == 0)
+                    .unwrap_or(data.src_path.len());
+                let src_path =
+                    String::from_utf8_lossy(&data.src_path[..first_null_src_path]).to_string();
 
-            loop {
-                let events = buf.read_events(&mut buffers).await.unwrap();
-                for i in 0..events.read {
-                    let ptr = buffers[i].as_ptr() as *const FileEvent;
-                    let data = unsafe { ptr::read_unaligned(ptr) };
+                let first_null_src_file = data
+                    .src_file
+                    .iter()
+                    .position(|&b| b == 0)
+                    .unwrap_or(data.src_file.len());
+                let src_file =
+                    String::from_utf8_lossy(&data.src_file[..first_null_src_file]).to_string();
 
-                    let first_null_filename = data
-                        .pathname
-                        .iter()
-                        .position(|&b| b == 0)
-                        .unwrap_or(data.filename.len());
-                    let pathname = String::from_utf8_lossy(&data.pathname[..first_null_filename]).to_string();
+                let first_null_trgt_path = data
+                    .trgt_path
+                    .iter()
+                    .position(|&b| b == 0)
+                    .unwrap_or(data.trgt_path.len());
+                let trgt_path =
+                    String::from_utf8_lossy(&data.trgt_path[..first_null_trgt_path]).to_string();
 
-                    let first_null_dentry = data
-                        .filename
-                        .iter()
-                        .position(|&b| b == 0)
-                        .unwrap_or(data.filename.len());
-                    let filename = String::from_utf8_lossy(&data.filename[..first_null_dentry]).to_string();
+                let first_null_trgt_file = data
+                    .trgt_file
+                    .iter()
+                    .position(|&b| b == 0)
+                    .unwrap_or(data.trgt_file.len());
+                let trgt_file =
+                    String::from_utf8_lossy(&data.trgt_file[..first_null_trgt_file]).to_string();
 
-                    let event_json = FileEventJson {
-                        event_type: data.event_type,
-                        target_dev: data.target_dev,
-                        ret_val: data.ret_val,
-                        pathname,
-                        filename,
-                    };
+                let event_json = FileEventJson {
+                    event_type: data.event_type,
+                    target_dev: data.target_dev,
+                    ret_val: data.ret_val,
+                    src_path,
+                    src_file,
+                    trgt_path,
+                    trgt_file,
+                };
 
-                    println!("{}", serde_json::to_string(&event_json).unwrap());
+                if let Ok(json_str) = serde_json::to_string(&event_json) {
+                    println!("{}", json_str);
+                } else {
+                    eprintln!("Error serializing event to JSON");
                 }
             }
-        });
-    }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    });
 
     println!("Waiting for Ctrl-C...");
     tokio::signal::ctrl_c().await?;
