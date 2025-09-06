@@ -38,18 +38,20 @@ fn process_event_generic(
         None => return 0,
     };
 
-    // Device check
-    for (dentry_ptr, _) in dentry_args {
-        if dentry_ptr.is_null() { continue; }
-        let dentry = unsafe { &**dentry_ptr };
-        let inode = unsafe { dentry.d_inode.as_ref() };
-        if let Some(inode_ref) = inode {
-            let sb = unsafe { inode_ref.i_sb.as_ref() };
-            if let Some(sb_ref) = sb {
-                if sb_ref.s_dev != target_dev { return 0; }
-            }
-        }
-    }
+    // Simple device check for the first dentry
+    let (first_dentry_ptr, _) = dentry_args[0];
+
+if unsafe {
+    first_dentry_ptr
+        .as_ref()
+        .and_then(|d| d.d_inode.as_ref())
+        .and_then(|i| i.i_sb.as_ref())
+        .map(|sb| sb.s_dev != target_dev)
+        .unwrap_or(false)
+} {
+    return 0;
+}
+
 
     // Read paths
     for (path_ptr, field_fn) in path_args {
