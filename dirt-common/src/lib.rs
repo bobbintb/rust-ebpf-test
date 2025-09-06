@@ -8,6 +8,7 @@ use serde::Serialize;
 pub enum EventType {
     Unlink,
     Create,
+    Rename,
 }
 
 pub const MAX_FILENAME_LEN: usize = 256;

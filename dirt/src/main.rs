@@ -39,6 +39,10 @@ async fn main() -> anyhow::Result<()> {
     program.load("path_unlink", &btf)?;
     program.attach()?;
 
+    let program: &mut Lsm = bpf.program_mut("lsm_path_rename").unwrap().try_into()?;
+    program.load("path_rename", &btf)?;
+    program.attach()?;
+
     let mut ring_buf =
         RingBuf::try_from(bpf.map_mut("EVENTS").ok_or(anyhow::anyhow!("EVENTS map not found"))?)?;
 
