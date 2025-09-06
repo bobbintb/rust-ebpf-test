@@ -30,6 +30,46 @@ pub fn lsm_path_unlink(ctx: LsmContext) -> i32 {
     }
 }
 
+fn get_path(ctx: &LsmContext, event_buf: &mut FileEvent) -> Result<i64, i32> {
+    let path_ptr: *const path = unsafe { ctx.arg(0) };
+    if path_ptr.is_null() {
+        return Err(0);
+    }
+    let path = unsafe { &*path_ptr };
+
+    let path_len = unsafe {
+        bpf_d_path(
+            path as *const _ as *mut _,
+            event_buf.src_path.as_mut_ptr() as *mut i8,
+            (MAX_PATH_LEN as u32) + 1,
+        )
+    };
+    if path_len <= 0 {
+        return Err(0);
+    }
+
+    Ok(path_len)
+}
+
+fn get_filename(dentry_ptr: *const vmlinux::dentry, event_buf: &mut FileEvent) {
+    if !dentry_ptr.is_null() {
+        let dentry = unsafe { &*dentry_ptr };
+        let copy_len = cmp::min(
+            unsafe { dentry.d_name.__bindgen_anon_1.__bindgen_anon_1.len as usize + 1 },
+            MAX_FILENAME_LEN,
+        );
+        let ptr = event_buf.src_file.as_mut_ptr();
+        let _ = unsafe {
+            bpf_probe_read_kernel_str_bytes(
+                dentry.d_name.name as *const u8,
+                core::slice::from_raw_parts_mut(ptr, copy_len),
+            )
+        };
+    } else {
+        event_buf.src_file[0] = 0;
+    }
+}
+
 fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
     // --- early filter by device ID ---
     let target_dev = TARGET_DEV.get(0).ok_or(-1)?;
@@ -45,45 +85,21 @@ fn try_lsm_path_unlink(ctx: LsmContext) -> Result<i32, i32> {
         return Ok(0);
     }
 
-    // --- get path ---
-    let path_ptr: *const path = unsafe { ctx.arg(0) };
-    if path_ptr.is_null() { return Ok(0); }
-    let path = unsafe { &*path_ptr };
+    let event_buf_ptr = EVENT_BUF.get_ptr_mut(0).ok_or(-1)?;
+    let event_buf = unsafe { &mut *event_buf_ptr };
 
-    let event_buf = EVENT_BUF.get_ptr_mut(0).ok_or(-1)?;
-
-    // --- read full path directly into event_buf.src_path ---
-    let path_len = unsafe {
-        bpf_d_path(path as *const _ as *mut _, (*event_buf).src_path.as_mut_ptr() as *mut i8, (MAX_PATH_LEN as u32) + 1)
-    };
-    if path_len <= 0 { return Ok(0); }
-
-    // --- read filename directly into event_buf.src_file ---
-    if !dentry_ptr.is_null() {
-        let dentry = unsafe { &*dentry_ptr };
-        let copy_len = cmp::min(
-            unsafe { dentry.d_name.__bindgen_anon_1.__bindgen_anon_1.len as usize + 1 },
-            MAX_FILENAME_LEN,
-        );
-        let ptr = unsafe { (*event_buf).src_file.as_mut_ptr() };
-        let _ = unsafe {
-            bpf_probe_read_kernel_str_bytes(
-                dentry.d_name.name as *const u8,
-                core::slice::from_raw_parts_mut(ptr, copy_len),
-            )
-        };
-    } else {
-        unsafe { (*event_buf).src_file[0] = 0; }
+    if get_path(&ctx, event_buf).is_err() {
+        return Ok(0);
     }
+
+    get_filename(dentry_ptr, event_buf);
 
     // --- fill remaining fields ---
-    unsafe {
-        (*event_buf).event_type = EventType::Unlink;
-        (*event_buf).target_dev = *target_dev;
-        (*event_buf).ret_val = 0;
+    event_buf.event_type = EventType::Unlink;
+    event_buf.target_dev = *target_dev;
+    event_buf.ret_val = 0;
 
-        EVENTS.output(&*event_buf, 0).map_err(|_| -1)?;
-    }
+    EVENTS.output(event_buf, 0).map_err(|_| -1)?;
 
     Ok(0)
 }
