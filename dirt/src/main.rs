@@ -5,18 +5,11 @@ use aya::{
     Btf, Ebpf,
 };
 use dirt_common::*;
-use serde::Serialize;
 use std::{fs, os::unix::fs::MetadataExt, ptr};
 
-#[derive(Serialize)]
-struct FileEventJson {
-    event_type: EventType,
-    target_dev: u32,
-    ret_val: i32,
-    src_path: String,
-    src_file: String,
-    trgt_path: String,
-    trgt_file: String,
+fn bytes_to_string(bytes: &[u8]) -> String {
+    let first_null = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    String::from_utf8_lossy(&bytes[..first_null]).to_string()
 }
 
 #[tokio::main]
@@ -39,6 +32,10 @@ async fn main() -> anyhow::Result<()> {
     program.load("path_unlink", &btf)?;
     program.attach()?;
 
+    let program: &mut Lsm = bpf.program_mut("lsm_path_rename").unwrap().try_into()?;
+    program.load("path_rename", &btf)?;
+    program.attach()?;
+
     let mut ring_buf =
         RingBuf::try_from(bpf.map_mut("EVENTS").ok_or(anyhow::anyhow!("EVENTS map not found"))?)?;
 
@@ -48,52 +45,24 @@ async fn main() -> anyhow::Result<()> {
                 let ptr = data.as_ptr() as *const FileEvent;
                 let data = unsafe { ptr::read_unaligned(ptr) };
 
-                let first_null_src_path = data
-                    .src_path
-                    .iter()
-                    .position(|&b| b == 0)
-                    .unwrap_or(data.src_path.len());
-                let src_path =
-                    String::from_utf8_lossy(&data.src_path[..first_null_src_path]).to_string();
+                let src_path = bytes_to_string(&data.src_path);
+                let src_file = bytes_to_string(&data.src_file);
 
-                let first_null_src_file = data
-                    .src_file
-                    .iter()
-                    .position(|&b| b == 0)
-                    .unwrap_or(data.src_file.len());
-                let src_file =
-                    String::from_utf8_lossy(&data.src_file[..first_null_src_file]).to_string();
-
-                let first_null_trgt_path = data
-                    .trgt_path
-                    .iter()
-                    .position(|&b| b == 0)
-                    .unwrap_or(data.trgt_path.len());
-                let trgt_path =
-                    String::from_utf8_lossy(&data.trgt_path[..first_null_trgt_path]).to_string();
-
-                let first_null_trgt_file = data
-                    .trgt_file
-                    .iter()
-                    .position(|&b| b == 0)
-                    .unwrap_or(data.trgt_file.len());
-                let trgt_file =
-                    String::from_utf8_lossy(&data.trgt_file[..first_null_trgt_file]).to_string();
-
-                let event_json = FileEventJson {
-                    event_type: data.event_type,
-                    target_dev: data.target_dev,
-                    ret_val: data.ret_val,
-                    src_path,
-                    src_file,
-                    trgt_path,
-                    trgt_file,
-                };
-
-                if let Ok(json_str) = serde_json::to_string(&event_json) {
-                    println!("{}", json_str);
-                } else {
-                    eprintln!("Error serializing event to JSON");
+                match data.event_type {
+                    EventType::Unlink => {
+                        println!("unlink {},{}", src_path, src_file);
+                    }
+                    EventType::Create => {
+                        println!("create {},{}", src_path, src_file);
+                    }
+                    EventType::Rename => {
+                        let trgt_path = bytes_to_string(&data.trgt_path);
+                        let trgt_file = bytes_to_string(&data.trgt_file);
+                        println!(
+                            "rename {},{},{},{}",
+                            src_path, src_file, trgt_path, trgt_file
+                        );
+                    }
                 }
             }
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
