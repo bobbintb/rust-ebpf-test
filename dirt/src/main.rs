@@ -1,7 +1,7 @@
 use aya::{
     include_bytes_aligned,
     maps::{Array, RingBuf},
-    programs::Lsm,
+    programs::{FEntry, Lsm},
     Btf, Ebpf,
 };
 use dirt_common::*;
@@ -41,6 +41,10 @@ async fn main() -> anyhow::Result<()> {
 
     let program: &mut Lsm = bpf.program_mut("lsm_path_rename").unwrap().try_into()?;
     program.load("path_rename", &btf)?;
+    program.attach()?;
+
+    let program: &mut FEntry = bpf.program_mut("file_update_time").unwrap().try_into()?;
+    program.load("file_update_time", &btf)?;
     program.attach()?;
 
     let mut ring_buf =

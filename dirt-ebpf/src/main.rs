@@ -5,9 +5,9 @@ mod vmlinux;
 
 use aya_ebpf::{
     helpers::{bpf_d_path, bpf_probe_read_kernel_str_bytes},
-    macros::{lsm, map},
+    macros::{fentry, lsm, map},
     maps::{Array, PerCpuArray, RingBuf},
-    programs::LsmContext,
+    programs::{FEntryContext, LsmContext},
 };
 use core::cmp;
 use dirt_common::{EventType, FileEvent, MAX_FILENAME_LEN, MAX_PATH_LEN};
@@ -114,6 +114,23 @@ pub fn lsm_path_rename(ctx: LsmContext) -> i32 {
             (unsafe { ctx.arg(1) }, |ev| &mut ev.src_file),
             (unsafe { ctx.arg(3) }, |ev| &mut ev.trgt_file),
         ],
+    )
+}
+
+#[fentry]
+pub fn file_update_time(ctx: FEntryContext) -> i32 {
+    let file_ptr: *const vmlinux::file = unsafe { ctx.arg(0) };
+    if file_ptr.is_null() {
+        return 0;
+    }
+    let file = unsafe { &*file_ptr };
+    let path = &file.f_path;
+    let dentry = path.dentry;
+
+    process_event_generic(
+        EventType::UpdateTime,
+        &[(path as *const _, |ev| &mut ev.src_path)],
+        &[(dentry as *const _, |ev| &mut ev.src_file)],
     )
 }
 
