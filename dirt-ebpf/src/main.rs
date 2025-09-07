@@ -11,7 +11,7 @@ use aya_ebpf::{
 };
 use core::cmp;
 use dirt_common::{EventType, FileEvent, MAX_FILENAME_LEN, MAX_PATH_LEN};
-use vmlinux::path;
+use vmlinux::{dentry, file, path};
 
 #[map]
 static TARGET_DEV: Array<u32> = Array::with_max_entries(1, 0);
