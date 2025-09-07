@@ -9,6 +9,7 @@ pub enum EventType {
     Unlink,
     Create,
     Rename,
+    FileUpdateTime,
 }
 
 pub const MAX_FILENAME_LEN: usize = 256;

@@ -5,9 +5,9 @@ mod vmlinux;
 
 use aya_ebpf::{
     helpers::{bpf_d_path, bpf_probe_read_kernel_str_bytes},
-    macros::{lsm, map},
+    macros::{fentry, lsm, map},
     maps::{Array, PerCpuArray, RingBuf},
-    programs::LsmContext,
+    programs::{FEntryContext, LsmContext},
 };
 use core::cmp;
 use dirt_common::{EventType, FileEvent, MAX_FILENAME_LEN, MAX_PATH_LEN};
@@ -90,6 +90,21 @@ if unsafe {
 
         let _ = EVENTS.output(event_buf, 0);
     0
+}
+
+// FENTRY hooks
+#[fentry(function = "file_update_time")]
+pub fn fentry_file_update_time(ctx: FEntryContext) -> i32 {
+    let file_ptr: *const vmlinux::file = unsafe { ctx.arg(0) };
+    if file_ptr.is_null() {
+        return 0;
+    }
+    let file = unsafe { &*file_ptr };
+    process_event_generic(
+        EventType::FileUpdateTime,
+        &[(&file.f_path, |ev| &mut ev.src_path)],
+        &[(file.f_path.dentry, |ev| &mut ev.src_file)],
+    )
 }
 
 // LSM hooks
