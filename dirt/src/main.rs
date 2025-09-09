@@ -6,9 +6,21 @@ use aya::{
 };
 use dirt_common::*;
 use serde::Serialize;
-use std::{fs, os::unix::fs::MetadataExt, ptr};
+use std::{
+    collections::HashMap,
+    fs,
+    os::unix::fs::MetadataExt,
+    ptr,
+    sync::Arc,
+};
+use tokio::{
+    io::AsyncWriteExt,
+    net::{UnixListener, UnixStream},
+    sync::{mpsc, Mutex},
+};
 
 #[derive(Serialize)]
+#[derive(Clone)]
 struct FileEventJson {
     event_type: EventType,
     target_dev: u32,
@@ -45,6 +57,50 @@ async fn main() -> anyhow::Result<()> {
 
     let mut ring_buf =
         RingBuf::try_from(bpf.map_mut("EVENTS").ok_or(anyhow::anyhow!("EVENTS map not found"))?)?;
+
+    let socket_path = "/tmp/dirt.sock";
+    if fs::metadata(socket_path).is_ok() {
+        fs::remove_file(socket_path)?;
+    }
+    let listener = UnixListener::bind(socket_path)?;
+    let clients: Arc<Mutex<HashMap<usize, UnixStream>>> = Arc::new(Mutex::new(HashMap::new()));
+    let (tx, mut rx) = mpsc::channel::<FileEventJson>(100);
+
+    let clients_clone = clients.clone();
+    tokio::spawn(async move {
+        let mut next_client_id = 0;
+        loop {
+            match listener.accept().await {
+                Ok((stream, _)) => {
+                    let mut clients = clients_clone.lock().await;
+                    clients.insert(next_client_id, stream);
+                    next_client_id += 1;
+                }
+                Err(e) => {
+                    eprintln!("Error accepting connection: {}", e);
+                }
+            }
+        }
+    });
+
+    let clients_clone2 = clients.clone();
+    tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            if let Ok(json_str) = serde_json::to_string(&event) {
+                println!("{}", json_str);
+                let mut clients = clients_clone2.lock().await;
+                let mut dead_clients = Vec::new();
+                for (id, stream) in clients.iter_mut() {
+                    if let Err(_) = stream.write_all(json_str.as_bytes()).await {
+                        dead_clients.push(*id);
+                    }
+                }
+                for id in dead_clients {
+                    clients.remove(&id);
+                }
+            }
+        }
+    });
 
     tokio::spawn(async move {
         loop {
@@ -94,10 +150,8 @@ async fn main() -> anyhow::Result<()> {
                     trgt_file,
                 };
 
-                if let Ok(json_str) = serde_json::to_string(&event_json) {
-                    println!("{}", json_str);
-                } else {
-                    eprintln!("Error serializing event to JSON");
+                if let Err(e) = tx.send(event_json).await {
+                    eprintln!("Error sending event to channel: {}", e);
                 }
             }
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
