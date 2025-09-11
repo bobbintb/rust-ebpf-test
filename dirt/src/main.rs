@@ -129,24 +129,18 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn is_path_whitelisted(path_str: &str, whitelisted_shares: &[String]) -> bool {
-    const TARGET_PATH_BASE: &str = "/mnt/user/";
+    let path = Path::new(path_str);
+    let components: Vec<_> = path.components().map(|c| c.as_os_str()).collect();
 
-    if !path_str.starts_with(TARGET_PATH_BASE) {
-        return false;
+    // Find the position of the "user" component in the path.
+    // The share name is expected to be the component immediately after "user".
+    if let Some(user_pos) = components.iter().position(|&c| c == "user") {
+        if let Some(share_component) = components.get(user_pos + 1) {
+            if let Some(share_name) = share_component.to_str() {
+                return whitelisted_shares.iter().any(|s| s == share_name);
+            }
+        }
     }
 
-    let relative_path_str = &path_str[TARGET_PATH_BASE.len()..];
-    let relative_path = Path::new(relative_path_str);
-
-    let first_component = match relative_path.components().next() {
-        Some(c) => c.as_os_str(),
-        None => return false,
-    };
-
-    let share_name = match first_component.to_str() {
-        Some(s) => s,
-        None => return false,
-    };
-
-    whitelisted_shares.iter().any(|s| s == share_name)
+    false
 }
