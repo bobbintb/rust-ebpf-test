@@ -4,9 +4,15 @@ use aya::{
     programs::Lsm,
     Btf, Ebpf,
 };
+use config::Config;
 use dirt_common::*;
-use serde::Serialize;
-use std::{fs, os::unix::fs::MetadataExt, ptr};
+use serde::{Deserialize, Serialize};
+use std::{fs, os::unix::fs::MetadataExt, path::Path, ptr};
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Settings {
+    pub whitelisted_shares: Vec<String>,
+}
 
 #[derive(Serialize)]
 struct FileEventJson {
@@ -21,6 +27,11 @@ struct FileEventJson {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let settings = Config::builder()
+        .add_source(config::File::with_name("dirt/Settings"))
+        .build()?
+        .try_deserialize::<Settings>()?;
+
     let bpf = Box::leak(Box::new(Ebpf::load(include_bytes_aligned!(concat!(
         env!("OUT_DIR"),
         "/dirt"
@@ -46,7 +57,9 @@ async fn main() -> anyhow::Result<()> {
     let mut ring_buf =
         RingBuf::try_from(bpf.map_mut("EVENTS").ok_or(anyhow::anyhow!("EVENTS map not found"))?)?;
 
+    let settings_clone = settings.clone();
     tokio::spawn(async move {
+        let settings = settings_clone;
         loop {
             while let Some(data) = ring_buf.next() {
                 let ptr = data.as_ptr() as *const FileEvent;
@@ -59,6 +72,10 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap_or(data.src_path.len());
                 let src_path =
                     String::from_utf8_lossy(&data.src_path[..first_null_src_path]).to_string();
+
+                if !is_path_whitelisted(&src_path, &settings.whitelisted_shares) {
+                    continue;
+                }
 
                 let first_null_src_file = data
                     .src_file
@@ -109,4 +126,27 @@ async fn main() -> anyhow::Result<()> {
     println!("Exiting...");
 
     Ok(())
+}
+
+fn is_path_whitelisted(path_str: &str, whitelisted_shares: &[String]) -> bool {
+    const TARGET_PATH_BASE: &str = "/mnt/user/";
+
+    if !path_str.starts_with(TARGET_PATH_BASE) {
+        return false;
+    }
+
+    let relative_path_str = &path_str[TARGET_PATH_BASE.len()..];
+    let relative_path = Path::new(relative_path_str);
+
+    let first_component = match relative_path.components().next() {
+        Some(c) => c.as_os_str(),
+        None => return false,
+    };
+
+    let share_name = match first_component.to_str() {
+        Some(s) => s,
+        None => return false,
+    };
+
+    whitelisted_shares.iter().any(|s| s == share_name)
 }
