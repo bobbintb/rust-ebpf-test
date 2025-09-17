@@ -8,6 +8,8 @@ use config::Config;
 use dirt_common::*;
 use serde::{Deserialize, Serialize};
 use std::{fs, os::unix::fs::MetadataExt, path::Path, ptr};
+use tokio::io::AsyncWriteExt;
+use tokio::net::UnixStream;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Settings {
@@ -57,8 +59,18 @@ async fn main() -> anyhow::Result<()> {
     let mut ring_buf =
         RingBuf::try_from(bpf.map_mut("EVENTS").ok_or(anyhow::anyhow!("EVENTS map not found"))?)?;
 
+    let socket_path = Path::new("/run/dirty.sock");
+    let stream = match UnixStream::connect(socket_path).await {
+        Ok(stream) => Some(stream),
+        Err(e) => {
+            eprintln!("Failed to connect to UDS: {}", e);
+            None
+        }
+    };
+
     let settings_clone = settings.clone();
     tokio::spawn(async move {
+        let mut stream = stream;
         let settings = settings_clone;
         loop {
             while let Some(data) = ring_buf.next() {
@@ -111,8 +123,14 @@ async fn main() -> anyhow::Result<()> {
                     trgt_file,
                 };
 
-                if let Ok(json_str) = serde_json::to_string(&event_json) {
+                if let Ok(mut json_str) = serde_json::to_string(&event_json) {
                     println!("{}", json_str);
+                    if let Some(ref mut stream) = stream {
+                        json_str.push('\n');
+                        if let Err(e) = stream.write_all(json_str.as_bytes()).await {
+                            eprintln!("Failed to write to UDS: {}", e);
+                        }
+                    }
                 } else {
                     eprintln!("Error serializing event to JSON");
                 }
